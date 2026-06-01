@@ -25,6 +25,9 @@ PIPELINE_STEPS = {
 }
 
 
+LEGACY_NO_CONFIG_STEPS = {13, 14, 16}
+
+
 def run_step(step_number: int, config_path: str):
     script = PIPELINE_STEPS[step_number]
     script_path = Path(script)
@@ -34,10 +37,12 @@ def run_step(step_number: int, config_path: str):
 
     print(f"\n[STEP {step_number:02d}] Running {script}")
 
-    result = subprocess.run(
-        [sys.executable, str(script_path), "--config", config_path],
-        check=False,
-    )
+    if step_number in LEGACY_NO_CONFIG_STEPS:
+        cmd = [sys.executable, str(script_path)]
+    else:
+        cmd = [sys.executable, str(script_path), "--config", config_path]
+
+    result = subprocess.run(cmd, check=False)
 
     if result.returncode != 0:
         raise RuntimeError(f"Step {step_number:02d} failed: {script}")
