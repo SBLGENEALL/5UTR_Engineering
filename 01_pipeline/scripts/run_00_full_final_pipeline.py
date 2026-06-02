@@ -11,8 +11,8 @@ steps = [
     "04_preprocess_heffner_proteomics.py",
     "05_integrate_proteomics_multiomics.py",
     "06_plot_multiomics_distributions.py",
-    "07_heavy_rnafold_kmer6_automl.py",
     "08_jaccard_sequence_cluster_qc.py",
+    "07_heavy_rnafold_kmer6_automl.py",
     "09_cluster_aware_classification_benchmark.py",
     "10_select_2000_cluster_diverse_library.py",
 ]
@@ -25,6 +25,11 @@ for step in steps:
     # final library selection defaults
     if step == "08_jaccard_sequence_cluster_qc.py":
         cmd += ["--k", "6", "--jaccard-threshold", "0.85", "--containment-threshold", "0.90", "--cluster-scope", "all"]
+    elif step == "07_heavy_rnafold_kmer6_automl.py":
+        cmd += [
+            "--split-modes", "random,gene_split,seq_cluster_split,gene_seq_cluster_split",
+            "--train-cluster-representative-only",
+        ]
     elif step == "09_cluster_aware_classification_benchmark.py":
         cmd += ["--length-min", "20", "--length-max", "500", "--kmax", "5", "--n-estimators", "1000"]
     elif step == "10_select_2000_cluster_diverse_library.py":

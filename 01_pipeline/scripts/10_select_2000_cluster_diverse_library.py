@@ -10,6 +10,7 @@ import pandas as pd
 BASE = Path.cwd()
 SEQ = "utr5_sequence_tss_corrected"
 DEFAULT_INPUTS = [
+    BASE / "04_te_labeling/tables/tss_corrected_5utr_with_seq_clusters_and_heavy_scores.csv",
     BASE / "04_te_labeling/tables/tss_corrected_5utr_with_seq_clusters.csv",
     BASE / "04_te_labeling/tables/tss_corrected_5utr_multiomics_labels.csv",
     BASE / "04_te_labeling/tables/tss_corrected_5utr_robust_public_te_labels.csv",
@@ -347,6 +348,23 @@ def main():
         "",
         "[Proteomics label coverage]",
         lib["has_proteomics_label"].value_counts(dropna=False).to_string() if "has_proteomics_label" in lib.columns else "NA",
+        "",
+        "[Heavy ensemble score coverage in candidate pool]",
+        (
+            f"non_null: {int(cand['heavy_ensemble_score'].notna().sum())} / {len(cand)} "
+            f"({cand['heavy_ensemble_score'].notna().mean():.3f})"
+            if "heavy_ensemble_score" in cand.columns
+            else "heavy_ensemble_score column missing in candidate pool"
+        ),
+        "",
+        "[Heavy ensemble score coverage in final library]",
+        (
+            f"non_null: {int(lib['heavy_ensemble_score'].notna().sum())} / {len(lib)} "
+            f"({lib['heavy_ensemble_score'].notna().mean():.3f})\n"
+            + pd.to_numeric(lib["heavy_ensemble_score"], errors="coerce").describe().to_string()
+            if "heavy_ensemble_score" in lib.columns
+            else "heavy_ensemble_score column missing in final library"
+        ),
         "",
         f"Saved CSV: {OUT_CSV}",
         f"Saved FASTA: {OUT_FASTA}",
