@@ -68,3 +68,5 @@ data/
 !06_modeling/**/.gitkeep
 !07_library_design/**/.gitkeep
 !08_reports/**/.gitkeep
+00_raw_data/05_cho_proteomics/ncbi_gene_mapping/gene2accession.full.gz
+make_gene2accession_cho_only.py

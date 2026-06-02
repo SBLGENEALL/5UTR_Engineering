@@ -1,0 +1,9 @@
+00_raw_data/**/*.gz filter=lfs diff=lfs merge=lfs -text
+00_raw_data/**/*.fna filter=lfs diff=lfs merge=lfs -text
+00_raw_data/**/*.fa filter=lfs diff=lfs merge=lfs -text
+00_raw_data/**/*.gff filter=lfs diff=lfs merge=lfs -text
+00_raw_data/**/*.bed filter=lfs diff=lfs merge=lfs -text
+00_raw_data/**/*.txt filter=lfs diff=lfs merge=lfs -text
+00_raw_data/**/*.tsv filter=lfs diff=lfs merge=lfs -text
+00_raw_data/**/*.csv filter=lfs diff=lfs merge=lfs -text
+00_raw_data/**/*.xlsx filter=lfs diff=lfs merge=lfs -text
