@@ -1,180 +1,64 @@
-# CHO 5′UTR Engineering Platform
+# CHO 5′ UTR Engineering Pipeline — Final Numbered Release
 
-This repository is the **v1.0 final release package** for the CHO 5′UTR engineering project.
+This repository is the clean, team-shareable pipeline for CHO 5′ UTR candidate discovery.
 
-The repository now uses the uploaded final release package as the canonical source:
+The final release is designed to start from raw data only:
 
-```text
-CHO5UTR_FINAL_RELEASE_GitHub_ready.zip
-CHO5UTR_FINAL_script_catalog_runbook.xlsx
-```
+1. NCBI CHO genome FASTA + GFF
+2. PICR3 TSS atlas BED + metadata
+3. GSE79512 RNA-seq raw counts
+4. GSE79512 Ribo-seq raw counts
+5. Heffner CHO proteomics minimal TSV
+6. NCBI `gene2accession.gz` and `gene_info.gz`
 
-Do not use the previous ChatGPT reconstruction scripts as the reference workflow. The ZIP package is the authoritative team-distribution version.
-
----
-
-## What this pipeline does
-
-This platform supports reproducible CHO 5′UTR candidate discovery by combining:
-
-1. TSS-corrected CHO 5′UTR database construction
-2. RNA-seq and Ribo-seq mapping
-3. Public TE / Ribo-TE calculation
-4. Proteomics and multi-omics integration
-5. RNAfold + k-mer feature extraction
-6. Cluster-aware model benchmarking
-7. Evidence-balanced, cluster-diverse final library selection
-
-The final goal is to generate an experimentally usable 5′UTR candidate library, especially:
+The pipeline performs:
 
 ```text
-selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.csv
+CHO genome/GFF annotation
+→ TSS-atlas correction
+→ RNA/Ribo public TE labeling
+→ Heffner proteomics mapping
+→ multi-omics label generation
+→ RNAfold/k-mer6/tree2000 heavy modeling
+→ Jaccard sequence cluster QC
+→ cluster-aware classification benchmark
+→ final 2,000 cluster-diverse 50–100 bp 5′ UTR library
 ```
 
----
+## Run everything
 
-## Final release package
+```bash
+conda activate /home/MCET03/conda_envs/utr_env
+bash RUN_FINAL_MAIN.sh
+```
 
-Download and unzip:
+or directly:
+
+```bash
+python 01_pipeline/scripts/run_00_full_final_pipeline.py
+```
+
+## Numbered main scripts
+
+| Step | Script | Purpose |
+|---:|---|---|
+| 00 | `00_check_inputs.py` | Validate required raw inputs. TSS atlas is required in this final release. |
+| 01 | `01_build_utr_database.py` | Build annotation-derived CHO 5′ UTR database from NCBI FASTA/GFF. |
+| 02 | `02_tss_correction.py` | Correct/support UTRs using PICR3 TSS atlas. |
+| 03 | `03_map_rna_ribo_public_te.py` | Map RNA/Ribo counts and create robust public TE labels. |
+| 04 | `04_preprocess_heffner_proteomics.py` | Process Heffner minimal TSV and map proteins to genes. |
+| 05 | `05_integrate_proteomics_multiomics.py` | Add protein abundance/residual labels to UTR rows. |
+| 06 | `06_plot_multiomics_distributions.py` | Generate TE/proteomics/multiomics distribution QC plots. |
+| 07 | `07_heavy_rnafold_kmer6_automl.py` | Run heavy RNAfold/k-mer6/tree model benchmark. |
+| 08 | `08_jaccard_sequence_cluster_qc.py` | Remove/cluster exact and near-duplicate sequences. |
+| 09 | `09_cluster_aware_classification_benchmark.py` | Evaluate classification with gene/sequence-cluster-aware splits. |
+| 10 | `10_select_2000_cluster_diverse_library.py` | Select final 2,000 evidence-balanced, cluster-diverse candidates. |
+
+## Final outputs
 
 ```text
-CHO5UTR_FINAL_RELEASE_GitHub_ready.zip
+07_library_design/tables/selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.csv
+07_library_design/fasta/selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.fasta
 ```
 
-The unzipped release contains the actual executable pipeline and final folder structure.
-
-Use the Excel runbook for script-by-script operation details:
-
-```text
-CHO5UTR_FINAL_script_catalog_runbook.xlsx
-```
-
----
-
-## Canonical release structure
-
-After unzipping the release package, the expected project structure is:
-
-```text
-00_raw_data/
-01_pipeline/
-02_utr_database/
-03_tss_correction/
-04_te_labeling/
-05_feature_extraction/
-06_modeling/
-07_library_design/
-08_reports/
-99_archive/
-```
-
-### Key folders
-
-```text
-00_raw_data/          Raw input data location
-01_pipeline/         Main executable scripts and run scripts
-02_utr_database/     UTR database construction outputs
-03_tss_correction/   TSS-corrected 5′UTR outputs
-04_te_labeling/      TE / protein residual / evidence labeling
-05_feature_extraction/ RNAfold, k-mer, and sequence feature outputs
-06_modeling/         Model training and cluster-aware benchmark outputs
-07_library_design/   Final selected 5′UTR library outputs
-08_reports/          Reports, plots, summaries, and runbooks
-99_archive/          Deprecated or historical scripts; do not run by default
-```
-
----
-
-## Quick start
-
-Use the batch files included in the final ZIP package.
-
-Recommended order:
-
-```text
-RUN_00_download.bat
-RUN_01_base_publicTE.bat
-RUN_02_proteomics_multiomics.bat
-RUN_03_automl_quick.bat
-RUN_04_plot_proteomics.bat
-RUN_05_final_libraries.bat
-```
-
-Or run the full workflow:
-
-```text
-RUN_ALL.bat
-```
-
-For workstation/server environments without internet access, prepare `00_raw_data/` manually before running the pipeline.
-
----
-
-## Key scripts
-
-The most important final-release scripts are inside:
-
-```text
-01_pipeline/scripts/
-```
-
-Core scripts:
-
-```text
-01_build_utr_database.py
-02_tss_correction.py
-03_map_rna_ribo_robust_public_te.py
-09_integrate_proteomics_multiomics.py
-18_heavy_rnafold_kmer6_automl.py
-22_jaccard_sequence_cluster_qc.py
-23_cluster_aware_classification_benchmark.py
-24_select_2000_cluster_diverse_library.py
-```
-
-The final library selection script is:
-
-```text
-01_pipeline/scripts/24_select_2000_cluster_diverse_library.py
-```
-
----
-
-## Final output
-
-Primary final candidate library:
-
-```text
-07_library_design/selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.csv
-```
-
-This file is designed to balance multiple evidence groups, including:
-
-```text
-publicTE_high_confidence
-TE_model_classifier_supported
-Protein_abundance_supported
-Protein_residual_supported
-Multi_omics_consensus_high
-sequence_diverse_exploratory
-Length_GC_uAUG_diversity
-low_signal_negative_controls
-fill_best_remaining_allow_cluster2
-```
-
----
-
-## Archive policy
-
-Scripts in `99_archive/` are preserved for traceability but should not be used as the default workflow.
-
-The current default workflow is the v1.0 final release ZIP package plus the script catalog Excel file.
-
----
-
-## Version
-
-Current release:
-
-```text
-v1.0_final_release
-```
+See `docs/` for runbook, script catalog, input manifest, and interpretation guide.

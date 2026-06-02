@@ -1,0 +1,27 @@
+{
+  "proteomics_path": "00_raw_data/05_cho_proteomics/Heffner_2020_CHO_hamster_proteomics_ncbi_mapped_for_5utr.csv",
+  "gene_symbol_column": "gene_symbol_key",
+  "gene_id_column": "gene_id_key",
+  "abundance_columns": [
+    "abundance_proxy"
+  ],
+  "sheet_name": 0,
+  "protein_abundance_transform": "none",
+  "protein_aggregation": "mean",
+  "multi_omics_score_weights": {
+    "robust_public_te_rank": 0.5,
+    "protein_residual_rank": 0.2,
+    "protein_abundance_rank": 0.15,
+    "day_consensus_TE_rank": 0.1,
+    "tss_confidence_score": 0.05
+  },
+  "candidate_filter": {
+    "training_min_length": 40,
+    "training_max_length": 200,
+    "selection_min_length": 50,
+    "selection_max_length": 100,
+    "gc_min": 0.3,
+    "gc_max": 0.75,
+    "uaug_max": 1
+  }
+}

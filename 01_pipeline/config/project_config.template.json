@@ -1,0 +1,75 @@
+{
+  "project_name": "CHO5UTR_publicTE_proteomics_AutoRank_v2",
+  "paths": {
+    "genome_fasta": "00_raw_data/01_ncbi_genome_annotation/GCF_003668045.1_CriGri-PICR_genomic.fna.gz",
+    "annotation_gff": "00_raw_data/01_ncbi_genome_annotation/GCF_003668045.1_CriGri-PICR_genomic.gff.gz",
+    "tss_file": "00_raw_data/02_tss_atlas_picr3/GSE159044_eTSS_NCBI_picr.bed.gz",
+    "tss_meta_file": "00_raw_data/02_tss_atlas_picr3/GSE159044_eTSS_NCBI_picr.meta.tsv.gz",
+    "rna_count_table": "00_raw_data/03_gse79512_rna_ribo/GSE79512_RNASeq_rawCount.txt.gz",
+    "ribo_count_table": "00_raw_data/03_gse79512_rna_ribo/GSE79512_RiboSeq_rawCount.txt.gz"
+  },
+  "columns": {
+    "rna_gene_symbol": "auto",
+    "ribo_gene_symbol": "auto",
+    "rna_day3": "auto",
+    "rna_day6": "auto",
+    "ribo_day3": "auto",
+    "ribo_day6": "auto"
+  },
+  "candidate_filter": {
+    "primary_min_length": 50,
+    "primary_max_length": 100,
+    "fallback_min_length": 40,
+    "fallback_max_length": 120,
+    "gc_min": 0.3,
+    "gc_max": 0.75,
+    "allow_uaug_max": 1
+  },
+  "training_filter": {
+    "rna_day3_raw_mean_min": 10,
+    "rna_day6_raw_mean_min": 10,
+    "ribo_day3_raw_mean_min": 5,
+    "ribo_day6_raw_mean_min": 5,
+    "max_abs_log2_day_difference": 3.0,
+    "require_day_consistency": false
+  },
+  "robust_public_te_score": {
+    "mean_te_rank_weight": 0.35,
+    "day_consensus_rank_weight": 0.25,
+    "residual_te_rank_weight": 0.2,
+    "ribo_abundance_rank_weight": 0.1,
+    "tss_confidence_weight": 0.1
+  },
+  "modeling": {
+    "target_rank_column": "robust_public_te_rank",
+    "gene_group_column": "gene_name",
+    "test_size": 0.2,
+    "random_state": 42,
+    "models": [
+      "ExtraTrees",
+      "RandomForest",
+      "HistGradientBoosting"
+    ],
+    "classification_positive_quantile": 0.8,
+    "classification_negative_quantile": 0.3,
+    "topk_fracs": [
+      0.05,
+      0.1,
+      0.2
+    ]
+  },
+  "library_design": {
+    "n_total": 1000,
+    "forbidden_sites": {
+      "BsaI_GGTCTC": "GGTCTC",
+      "BsaI_GAGACC": "GAGACC",
+      "BsmBI_CGTCTC": "CGTCTC",
+      "BsmBI_GAGACG": "GAGACG",
+      "EcoRI_GAATTC": "GAATTC",
+      "XhoI_CTCGAG": "CTCGAG",
+      "NheI_GCTAGC": "GCTAGC",
+      "AgeI_ACCGGT": "ACCGGT",
+      "NotI_GCGGCCGC": "GCGGCCGC"
+    }
+  }
+}

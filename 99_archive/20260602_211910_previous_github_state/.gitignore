@@ -1,0 +1,12 @@
+data/reference/*.gz
+data/raw/**/*.gz
+data/raw/**/*.fastq
+data/raw/**/*.fq
+data/raw/**/*.bam
+data/raw/**/*.sam
+data/processed/*.csv
+data/processed/*.tsv
+data/processed/*.parquet
+results/
+__pycache__/
+*.pyc

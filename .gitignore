@@ -1,12 +1,60 @@
-data/reference/*.gz
-data/raw/**/*.gz
-data/raw/**/*.fastq
-data/raw/**/*.fq
-data/raw/**/*.bam
-data/raw/**/*.sam
-data/processed/*.csv
-data/processed/*.tsv
-data/processed/*.parquet
-results/
+# Raw data and large outputs
+00_raw_data/**/*
+!00_raw_data/**/
+!00_raw_data/**/.gitkeep
+!00_raw_data/**/README.md
+
+# Models/results can be regenerated
+06_modeling/models/*
+06_modeling/plots/*
+06_modeling/tables/*
+!06_modeling/**/.gitkeep
+
+07_library_design/tables/*
+07_library_design/fasta/*
+07_library_design/qc/*
+!07_library_design/**/.gitkeep
+
+04_te_labeling/tables/*
+04_te_labeling/qc/*
+!04_te_labeling/**/.gitkeep
+
+02_utr_database/tables/*
+02_utr_database/fasta/*
+02_utr_database/qc/*
+03_tss_correction/tables/*
+03_tss_correction/fasta/*
+03_tss_correction/qc/*
+05_feature_extraction/tables/*
+05_feature_extraction/rnafold/*
+05_feature_extraction/qc/*
+!02_utr_database/**/.gitkeep
+!03_tss_correction/**/.gitkeep
+!05_feature_extraction/**/.gitkeep
+
+# Python
 __pycache__/
 *.pyc
+.ipynb_checkpoints/
+
+# Archives remain local by default
+99_archive/**/*
+!99_archive/.gitkeep
+
+# OS/editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Local raw data and generated results
+00_raw_data/
+02_utr_database/
+03_tss_correction/
+04_te_labeling/
+05_feature_extraction/
+06_modeling/
+07_library_design/
+08_reports/
+FINAL_NUMBERED_RELEASE_MANIFEST.json
+MANIFEST.txt
+data/
