@@ -58,6 +58,15 @@ def rank_pct(s):
     return pd.to_numeric(s, errors="coerce").rank(pct=True)
 
 
+def optional_bool_gate(df, col, default=True):
+    if col not in df.columns:
+        return pd.Series(default, index=df.index)
+    s = df[col]
+    if pd.api.types.is_bool_dtype(s):
+        return s.fillna(False)
+    return s.astype(str).str.strip().str.lower().isin(["true", "1", "yes", "y"])
+
+
 def nonempty_series(df, col):
     if col not in df.columns:
         return pd.Series(dtype=str)
@@ -207,7 +216,9 @@ def main():
     path = choose_input(args.input)
     print("[LOAD]", path)
     df = prep(pd.read_csv(path))
+    expression_gate = optional_bool_gate(df, "is_expressed_public", default=True)
     cand = df[
+        expression_gate &
         df["length"].between(50, 100) &
         pd.to_numeric(df["gc_content"], errors="coerce").between(0.30, 0.75) &
         (pd.to_numeric(df["uaug_count"], errors="coerce").fillna(999) <= 1) &
@@ -356,6 +367,7 @@ def main():
     front = [c for c in [
         "library_index", "library_group", "is_reference_control", "utr_id", "gene_id", "gene_name", SEQ,
         "length", "gc_content", "uaug_count", "seq_cluster_id", "seq_cluster_size", "forbidden_sites",
+        "is_expressed_public", "expression_qc_reason",
         "robust_public_te_rank", "day_consensus_TE_rank", "protein_abundance_rank", "protein_residual_rank", "multi_omics_utr_rank",
         "cluster_diverse_evidence_score", "model_support_score", "has_proteomics_label"
     ] if c in lib.columns]
@@ -391,6 +403,14 @@ def main():
         "",
         "[Proteomics label coverage]",
         lib["has_proteomics_label"].value_counts(dropna=False).to_string() if "has_proteomics_label" in lib.columns else "NA",
+        "",
+        "[Public expression gate coverage]",
+        (
+            f"candidate_input_pass: {int(expression_gate.sum())} / {len(df)} ({expression_gate.mean():.3f})\n"
+            + lib["is_expressed_public"].value_counts(dropna=False).to_string()
+            if "is_expressed_public" in df.columns and "is_expressed_public" in lib.columns
+            else "is_expressed_public column missing; expression gate not applied"
+        ),
         "",
         "[Heavy ensemble score coverage in candidate pool]",
         (
