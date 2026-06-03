@@ -60,6 +60,9 @@ QC criteria:
 tss_correction_mode includes no_tss_match, trim_to_tss, extend_to_tss, or unchanged.
 robust_public_te_rank is non-null only when is_expressed_public is True.
 Non-expressed genes have expression_qc_reason explaining the missing or low-count group.
+A/B/C/D/E library groups are selected from expressed evidence candidates.
+F/G/H/J may use clean base candidates when evidence candidates are insufficient or not required by group design.
+Selection summary reports candidate_pool_after_QC, evidence_candidate_pool_after_expression_TE_QC, and selection_source counts.
 Final output filenames remain unchanged.
 selected_n should remain 2000; if candidate_pool_after_QC drops below 2000, relax expression thresholds only after review.
 ```
