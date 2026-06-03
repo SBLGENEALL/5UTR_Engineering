@@ -18,7 +18,8 @@ DEFAULT_INPUTS = [
 OUT_CSV = BASE / "07_library_design/tables/selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.csv"
 OUT_FASTA = BASE / "07_library_design/fasta/selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.fasta"
 OUT_QC = BASE / "07_library_design/qc/selected_2000_50_100bp_cluster_diverse_evidence_balanced_summary.txt"
-for p in [OUT_CSV.parent, OUT_FASTA.parent, OUT_QC.parent]:
+OUT_DIVERSITY = BASE / "06_modeling/tables/final_library_gene_cluster_diversity_summary.txt"
+for p in [OUT_CSV.parent, OUT_FASTA.parent, OUT_QC.parent, OUT_DIVERSITY.parent]:
     p.mkdir(parents=True, exist_ok=True)
 
 
@@ -55,6 +56,47 @@ def forbidden_sites(seq):
 
 def rank_pct(s):
     return pd.to_numeric(s, errors="coerce").rank(pct=True)
+
+
+def nonempty_series(df, col):
+    if col not in df.columns:
+        return pd.Series(dtype=str)
+    vals = df[col].dropna().astype(str).str.strip()
+    return vals[(vals != "") & (vals.str.lower() != "nan")]
+
+
+def choose_gene_column(df):
+    for col in ["gene_name", "gene_id"]:
+        if len(nonempty_series(df, col)):
+            return col
+    return None
+
+
+def write_final_diversity_summary(lib, path):
+    gene_col = choose_gene_column(lib)
+    genes = nonempty_series(lib, gene_col) if gene_col else pd.Series(dtype=str)
+    seq_clusters = nonempty_series(lib, "seq_cluster_id")
+    gene_counts = genes.value_counts()
+    seq_cluster_counts = seq_clusters.value_counts()
+
+    lines = [
+        "Final library gene and 5'UTR sequence-similarity cluster summary",
+        "=" * 100,
+        "Note: seq_cluster_id is a 5'UTR sequence-similarity cluster, not a gene cluster.",
+        f"selected_n: {len(lib)}",
+        f"gene_key_column: {gene_col or 'MISSING'}",
+        f"n_unique_seq_clusters: {int(seq_cluster_counts.shape[0])}",
+        f"max_per_seq_cluster: {int(seq_cluster_counts.max()) if len(seq_cluster_counts) else 0}",
+        f"n_unique_genes: {int(gene_counts.shape[0])}",
+        f"max_per_gene: {int(gene_counts.max()) if len(gene_counts) else 0}",
+        "",
+        "[Top genes by selected candidate count]",
+        gene_counts.head(25).to_string() if len(gene_counts) else "No gene_name/gene_id values available.",
+        "",
+        "[Top 5'UTR sequence-similarity clusters by selected candidate count]",
+        seq_cluster_counts.head(25).to_string() if len(seq_cluster_counts) else "No seq_cluster_id values available.",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def prep(df):
@@ -320,6 +362,7 @@ def main():
     lib = lib[front + [c for c in lib.columns if c not in front]]
     lib.to_csv(OUT_CSV, index=False)
     write_fasta(lib, OUT_FASTA)
+    write_final_diversity_summary(lib, OUT_DIVERSITY)
 
     q = [
         "Cluster-diverse evidence-balanced 2000 library summary",
@@ -368,11 +411,13 @@ def main():
         "",
         f"Saved CSV: {OUT_CSV}",
         f"Saved FASTA: {OUT_FASTA}",
+        f"Saved gene/sequence-cluster summary: {OUT_DIVERSITY}",
     ]
     OUT_QC.write_text("\n".join(q), encoding="utf-8")
     print("[SAVED]", OUT_CSV)
     print("[SAVED]", OUT_FASTA)
     print("[SAVED]", OUT_QC)
+    print("[SAVED]", OUT_DIVERSITY)
 
 
 if __name__ == "__main__":
