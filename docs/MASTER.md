@@ -1,5 +1,7 @@
 # 5UTR Engineering MASTER
 
+Last updated: 2026-06-04
+
 ## 1. Current Project State
 
 Repository:
@@ -10,80 +12,115 @@ Stable branch:
 
 * `main`
 * Initial stable numbered pipeline release.
+* Do not replace `main` until PR2/PR3 and release documentation are complete.
 
-Current working baseline:
+Current validated working baseline:
+
+* `improved-v1.2`
+* Defined from validated PR2 branch `improved-v1.1-pr2-tss-expression`.
+* PR2 full raw-data validation passed on company workstation.
+* This is now the recommended baseline for PR3 development.
+
+Previous validated baseline:
 
 * `improved-v1.1`
 * PR1 + PR1.1 validated.
-* The 08 Jaccard sequence clustering -> 07 heavy RNAfold/k-mer modeling -> 09 cluster-aware benchmark -> 10 final library selection connection has been validated.
+* The 08 Jaccard sequence clustering -> 07 heavy RNAfold/k-mer modeling -> 09 cluster-aware benchmark -> 10 final library selection connection was validated.
 
-Current experimental branch:
+Validated PR2 branch:
 
 * `improved-v1.1-pr2-tss-expression`
-* Purpose: PR2 TSS correction + expressed-only public TE labels + group-specific final selection expression gate.
-* Status: code pushed and lightweight checks passed, but full raw-data validation is still pending on the company workstation.
+* Purpose: TSS correction + expressed-only public TE labels + group-specific final selection expression gate.
+* Status: full raw-data validation passed; suitable to promote as `improved-v1.2` working baseline.
 
 Current operating rule:
 
-* Other chats should treat this `MASTER.md` as the source of truth.
+* Treat this `docs/MASTER.md` and `docs/CHANGELOG.md` as the source of truth for this branch family.
 * Historical chat context is secondary.
-* If a future chat becomes slow, start a new chat and ask it to read `MASTER.md` and `CHANGELOG.md` first.
+* Workspace chats are disposable; validated decisions should be written back to GitHub docs.
 
-## 2. Current Validated Baseline: improved-v1.1
+## 2. Current Validated Baseline: improved-v1.2
 
-PR1 goal:
+PR2 goals:
 
-* Restore correct pipeline connection among 08 sequence clustering, 07 heavy model scoring, and 10 final 2000 library selection.
+* Improve TSS correction using atlas-supported trim/extend behavior.
+* Improve public TE label reliability by computing TE/residual labels only for expressed rows.
+* Preserve PR1 08 -> 07 -> 10 heavy-score connection.
+* Keep final selected CSV/FASTA filenames unchanged.
+* Apply expression gating to evidence-supported groups while allowing clean exploratory/diversity/negative-control candidates where appropriate.
 
-PR1 validated outputs:
+Validated PR2 results from company workstation:
 
-```text
-04_te_labeling/tables/tss_corrected_5utr_with_seq_clusters.csv
-04_te_labeling/tables/tss_corrected_5utr_with_seq_clusters_and_heavy_scores.csv
-07_library_design/tables/selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.csv
-07_library_design/fasta/selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.fasta
-```
+* Final selected library generated successfully.
+* `selected_n = 2000`.
+* CSV line count = 2001 including header.
+* Length mean = 73.527.
+* Length min/max = 50/100.
+* `max_per_cluster_primary = 1`.
+* `heavy_ensemble_score` and `heavy_ensemble_rank` are present in the final selected library.
 
-PR1 validation result:
-
-* `selected_n`: 2000
-* `heavy_ensemble_score` non-null: 2000 / 2000
-* length range: 50-100
-* max per `seq_cluster_id`: 2
-
-PR1.1 goal:
-
-* Add validation guardrails and reporting without changing modeling or selection logic.
-
-PR1.1 added outputs:
+TSS correction validation:
 
 ```text
-06_modeling/tables/cluster_split_disjointness_check.csv
-06_modeling/tables/final_library_gene_cluster_diversity_summary.txt
+trim_to_tss     22,722
+extend_to_tss    9,799
+unchanged         7,827
+no_tss_match      2,112
+total            42,460
 ```
 
-PR1.1 validation result:
+TSS confidence summary:
 
-* `gene_seq_cluster_split` passed for all four targets.
-* `gene_overlap_count = 0`.
-* `seq_cluster_overlap_count = 0`.
-* `pass_required_for_split = True`.
-* `selected_n`: 2000
-* `n_unique_seq_clusters`: 1943
-* `max_per_seq_cluster`: 2
-* `n_unique_genes`: 1850
-* `max_per_gene`: 4
+```text
+tss_supported_with_signal  40,348
+no_tss_match                2,112
+```
+
+Model validation, strict `robust_public_te_rank` / `gene_seq_cluster_split` / `40_200` classification:
+
+```text
+ExtraTrees              ROC-AUC 0.7145
+RandomForest            ROC-AUC 0.7092
+HistGradientBoosting    ROC-AUC 0.6770
+```
+
+Reference PR1 baseline:
+
+```text
+RandomForest ROC-AUC 0.671
+```
 
 Interpretation:
 
-* `seq_cluster_id` is a 5'UTR sequence-similarity cluster, not a gene cluster.
-* Final diversity is enforced on sequence clusters.
-* Gene-level diversity is reported but not hard-capped.
-* The same gene can appear multiple times if distinct transcript/UTR isoforms fall into different sequence clusters.
+* PR2 improved the strict TE classification signal relative to PR1.
+* The likely driver is reduced sequence/label noise from atlas-based TSS correction and expressed-only TE labels.
+* ExtraTrees is the best observed classifier in this checkpoint, but final selection uses the integrated heavy/model/evidence columns rather than treating a single classifier as the only criterion.
 
-Recommended wording:
+Leakage/disjointness validation:
 
-> The final 2,000-member library spans 1,943 5'UTR sequence-similarity clusters, with no more than 2 candidates per sequence cluster. It is drawn from 1,850 unique source genes, with a maximum of 4 candidates per gene. Diversity is enforced on sequence clusters; gene-level spread is reported but not capped.
+* For the strict `gene_seq_cluster_split`, overlap/leakage was 0 for all four targets checked:
+  * TE
+  * multi-omics
+  * protein abundance
+  * protein residual
+* Non-strict split modes can show overlaps by design; the required strict split passed.
+
+Final selection source counts:
+
+```text
+evidence_cand                 1238
+fill_base_cand_clean_sequence  482
+base_cand_diversity            100
+base_cand_low_publicTE         100
+fill_evidence_cand              68
+base_cand_exploratory           12
+```
+
+Interpretation:
+
+* The final 2,000-member PR2 library is evidence-driven, not simply the top 2,000 by model score.
+* Most candidates come from expressed public TE evidence candidates.
+* A substantial clean sequence fill component exists because the primary selection enforces cluster diversity.
 
 ## 3. Pipeline Order
 
@@ -113,160 +150,81 @@ Important:
 04_te_labeling/tables/tss_corrected_5utr_with_seq_clusters_and_heavy_scores.csv
 ```
 
-## 4. Current PR2 Branch
+## 4. PR2 Selection Logic Snapshot
 
-Branch:
+The current PR2 selector first creates `base_cand` with sequence QC:
 
-* `improved-v1.1-pr2-tss-expression`
+* length 50-100
+* GC 0.30-0.75
+* `uaug_count <= 1`
+* no forbidden restriction-enzyme sites under the current PR2 logic
+* non-empty sequence
+* no `N`
+* duplicate sequence removal
 
-Latest PR2 commits:
+Then it creates `evidence_cand`:
 
-* `d52210d` Add PR2 TSS extension and expressed-only TE labels
-* `92b3279` Make PR2 selection expression gates group-specific
+* `base_cand`
+* `is_expressed_public = True`
+* non-null `robust_public_te_rank`
 
-PR2 goal:
-
-* Improve TSS correction and public TE label reliability.
-* Preserve PR1 08 -> 07 -> 10 heavy-score connection.
-* Keep final selected CSV/FASTA filenames unchanged.
-* Improve final selection logic so expression gating is applied to evidence-supported groups but does not remove clean exploratory/diversity/negative-control candidates unnecessarily.
-
-Changed files:
-
-```text
-01_pipeline/scripts/02_tss_correction.py
-01_pipeline/scripts/03_map_rna_ribo_public_te.py
-01_pipeline/scripts/10_select_2000_cluster_diverse_library.py
-docs/VALIDATION_PLAN.md
-```
-
-PR2 design summary:
-
-1. `02_tss_correction.py`
-
-* TSS inside annotated UTR: `trim_to_tss`.
-* Confident upstream TSS within `max_extend`: `extend_to_tss`.
-* Adds TSS correction mode and QC summary.
-* TSS extension should be conservative because the final library uses 50-100 bp windows.
-
-2. `03_map_rna_ribo_public_te.py`
-
-* Adds `is_expressed_public`.
-* Adds `expression_qc_reason`.
-* Computes TE/residual/`robust_public_te_rank` only for expressed rows.
-* Non-expressed or unreliable labels should become `NaN`, not zero-scored.
-
-3. `10_select_2000_cluster_diverse_library.py`
-
-* Group-specific expression gate.
-* `base_cand`: sequence QC only.
-* `evidence_cand`: `base_cand` + `is_expressed_public` + non-null `robust_public_te_rank`.
-* A/B/C/D/E selected from `evidence_cand`.
-* F/G selected from `base_cand` to preserve exploratory/diversity candidates.
-* H negative controls do not require the expression gate.
-* J fill uses `evidence_cand` first, then `base_cand` if needed.
-* Summary reports `candidate_pool_after_QC`, `evidence_candidate_pool_after_expression_TE_QC`, `selection_source` counts, and expression gate coverage.
-
-## 5. PR2 Company Workstation Validation Plan
-
-PR2 must be validated by full raw-data rerun because 02 can alter UTR boundaries and therefore affects:
-
-* 08 sequence clustering
-* 07 heavy model score
-* 09 benchmark
-* 10 final library
-
-Company workstation procedure:
-
-1. Download ZIP from GitHub branch:
+The current evidence score weights are heuristic, not yet performance-optimized:
 
 ```text
-improved-v1.1-pr2-tss-expression
+robust_public_te_rank      42%
+day_consensus_TE_rank      16%
+protein_residual_rank      12%
+protein_abundance_rank     10%
+multi_omics_utr_rank       10%
+model_score                 7%
+tss_confidence_score        3%
 ```
 
-2. Extract into a fresh folder, not over an old PR1 output folder.
-
-3. Place real raw data under:
+The original A-H quotas are also heuristic:
 
 ```text
-00_raw_data/
+A_publicTE_high_confidence          500
+B_TE_model_classifier_supported     300
+C_protein_abundance_supported       250
+D_protein_residual_supported        250
+E_multiomics_consensus_high         250
+F_sequence_diverse_exploratory      200
+G_length_GC_uAUG_diversity          100
+H_low_signal_negative_controls      100
 ```
 
-4. Run:
+Because `max_per_cluster_primary = 1`, actual filled counts can differ strongly from the requested quotas.
 
-```bash
-python 01_pipeline/scripts/00_check_inputs.py
-```
+## 5. PR3 Direction
 
-5. If input check passes, run:
+PR3 should start from `improved-v1.2`.
 
-```bash
-python 01_pipeline/scripts/run_00_full_final_pipeline.py > run_pr2_full.log 2>&1
-```
-
-6. After completion, inspect:
+Recommended branch name:
 
 ```text
-run_pr2_full.log
-03_tss_correction/qc/tss_correction_summary.txt
-04_te_labeling/qc/robust_public_te_mapping_summary.txt
-07_library_design/qc/selected_2000_50_100bp_cluster_diverse_evidence_balanced_summary.txt
-06_modeling/tables/final_library_gene_cluster_diversity_summary.txt
-06_modeling/tables/cluster_split_disjointness_check.csv
+improved-v1.2-pr3-selection-policy
 ```
 
-PR2 first-pass acceptance criteria:
+PR3 goals:
 
-* Input check passes.
-* Full pipeline completes without error.
-* `selected_n` remains 2000.
-* Final library length range remains 50-100.
-* `max_per_seq_cluster` remains <= 2.
-* `heavy_ensemble_score` exists in final selected library.
-* `candidate_pool_after_QC` is not too small.
-* `evidence_candidate_pool_after_expression_TE_QC` is sufficient for A-E evidence-supported groups.
-* `selection_source` counts show intended mixture of `evidence_cand` and `base_cand`-derived groups.
-* H negative controls are not unintentionally removed by expression gate.
-* `gene_seq_cluster_split` still has `gene_overlap_count = 0` and `seq_cluster_overlap_count = 0`.
-* PR2 output numbers may differ from PR1.1; this is expected because TSS correction and public TE label reliability changed.
+* Make uAUG/uORF screening stricter for final CHO vector candidates.
+* Treat restriction enzyme sites as soft warning or report-only because the planned library construction uses Gibson assembly, unless a site conflicts with the actual construct design.
+* Reconsider the A-H fixed quota policy.
+* Consider model-performance-informed weighting rather than only biology-intuition weights.
+* Consider outputting alternative final libraries for comparison:
+  * evidence-balanced
+  * model-prioritized
+  * conservative construct-ready
 
-Minimum result values to report back from company workstation:
+PR3 notes:
 
-* `selected_n`
-* `candidate_pool_after_QC`
-* `evidence_candidate_pool_after_expression_TE_QC`
-* `selection_source` counts
-* `heavy_ensemble_score` non-null count
-* length min/max
-* `max_per_seq_cluster`
-* `n_unique_seq_clusters`
-* `n_unique_genes`
-* `max_per_gene`
-* `is_expressed_public` count
-* `expression_qc_reason` counts
-* TSS correction mode counts
-* any error/warning from `run_pr2_full.log`
+* PR2 still allows `uaug_count <= 1`; it does not fully remove uAUG/uORF risk.
+* PR3 should distinguish:
+  * hard fail: strong uORF/uAUG risk, invalid sequence, serious construct incompatibility
+  * soft warning: enzyme sites under Gibson-compatible design, moderate motif concerns
+  * report-only: descriptive features such as length/GC/structure bins
 
-## 6. Next Planned Work
-
-PR3:
-
-* Construct-level screening
-* uAUG/uORF strict screening
-* cryptic splice donor/acceptor screening
-* polyA-like motif screening
-* restriction enzyme / assembly site screening
-* mAb CDS junction context
-* classify checks into hard fail, soft warning, and report-only
-
-PR4:
-
-* Team release documentation
-* README update
-* final validated tag
-* possible promotion of `improved-v1.1` or later validated branch to `main`
-
-## 7. Git Strategy
+## 6. Git Strategy
 
 `main`:
 
@@ -274,16 +232,18 @@ PR4:
 
 `improved-v1.1`:
 
-* Next stable candidate.
-* PR1 + PR1.1 validated.
+* PR1 + PR1.1 validated historical baseline.
 
-`improved-v1.1-pr2-tss-expression`:
+`improved-v1.2`:
 
-* PR2 experimental validation branch.
-* Full raw-data validation pending.
+* PR2 validated working baseline.
+* Recommended base for PR3.
+
+`improved-v1.2-pr3-selection-policy`:
+
+* Planned PR3 branch.
 
 Merge policy:
 
-* Do not merge PR2 into `improved-v1.1` until company workstation validation passes.
-* Do not merge `improved-v1.1` into `main` until PR2/PR3 validation and documentation are complete.
+* Do not merge `improved-v1.2` into `main` until PR3 selection policy and release documentation are complete.
 * Generated outputs should not be committed unless explicitly chosen as small release artifacts.
