@@ -19,7 +19,13 @@ OUT_CSV = BASE / "07_library_design/tables/selected_2000_50_100bp_cluster_divers
 OUT_FASTA = BASE / "07_library_design/fasta/selected_2000_50_100bp_cluster_diverse_evidence_balanced_library.fasta"
 OUT_QC = BASE / "07_library_design/qc/selected_2000_50_100bp_cluster_diverse_evidence_balanced_summary.txt"
 OUT_DIVERSITY = BASE / "06_modeling/tables/final_library_gene_cluster_diversity_summary.txt"
-for p in [OUT_CSV.parent, OUT_FASTA.parent, OUT_QC.parent, OUT_DIVERSITY.parent]:
+OUT_UAUG_SUMMARY_TXT = BASE / "07_library_design/qc/uaug_source_by_group_summary.txt"
+OUT_UAUG_SUMMARY_CSV = BASE / "07_library_design/tables/uaug_source_by_group_summary.csv"
+OUT_UAUG_POSITIVE_CSV = BASE / "07_library_design/tables/uaug_positive_final_library_rows.csv"
+OUT_UAUG0_DRY_SUMMARY = BASE / "07_library_design/tables/uaug0_hard_filter_dry_run_summary.csv"
+OUT_UAUG0_SHORTFALL = BASE / "07_library_design/tables/uaug0_hard_filter_quota_shortfall.csv"
+OUT_UAUG0_REPLACEMENTS = BASE / "07_library_design/tables/uaug0_replacement_candidates.csv"
+for p in [OUT_CSV.parent, OUT_FASTA.parent, OUT_QC.parent, OUT_DIVERSITY.parent, OUT_UAUG_SUMMARY_TXT.parent, OUT_UAUG_SUMMARY_CSV.parent]:
     p.mkdir(parents=True, exist_ok=True)
 
 
@@ -106,6 +112,223 @@ def write_final_diversity_summary(lib, path):
         seq_cluster_counts.head(25).to_string() if len(seq_cluster_counts) else "No seq_cluster_id values available.",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def metric_summary(df, base_candidate_pool=None, evidence_candidate_pool=None, unfilled_n=0):
+    gene_col = choose_gene_column(df)
+    genes = nonempty_series(df, gene_col) if gene_col else pd.Series(dtype=str)
+    clusters = nonempty_series(df, "seq_cluster_id")
+    heavy = pd.to_numeric(df["heavy_ensemble_score"], errors="coerce") if "heavy_ensemble_score" in df.columns else pd.Series(np.nan, index=df.index)
+    robust = pd.to_numeric(df["robust_public_te_rank"], errors="coerce") if "robust_public_te_rank" in df.columns else pd.Series(np.nan, index=df.index)
+    return {
+        "selected_n": len(df),
+        "unfilled_n": int(unfilled_n),
+        "base_candidate_pool": int(base_candidate_pool) if base_candidate_pool is not None else np.nan,
+        "evidence_candidate_pool": int(evidence_candidate_pool) if evidence_candidate_pool is not None else np.nan,
+        "heavy_ensemble_score_non_null": int(heavy.notna().sum()),
+        "mean_heavy_ensemble_score": float(heavy.mean()) if heavy.notna().any() else np.nan,
+        "mean_robust_public_te_rank": float(robust.mean()) if robust.notna().any() else np.nan,
+        "n_unique_seq_clusters": int(clusters.nunique()),
+        "max_per_seq_cluster": int(clusters.value_counts().max()) if len(clusters) else 0,
+        "n_unique_genes": int(genes.nunique()),
+        "max_per_gene": int(genes.value_counts().max()) if len(genes) else 0,
+    }
+
+
+def write_uaug_audit(lib):
+    if "uaug_count" not in lib.columns:
+        return
+    x = lib.copy()
+    x["uaug_count_numeric"] = pd.to_numeric(x["uaug_count"], errors="coerce")
+    group_cols = [c for c in ["library_group", "selection_source"] if c in x.columns]
+    rows = []
+    for key, g in x.groupby(group_cols, dropna=False) if group_cols else [("all", x)]:
+        if not isinstance(key, tuple):
+            key = (key,)
+        row = {col: val for col, val in zip(group_cols, key)}
+        uaug_pos = g["uaug_count_numeric"].fillna(999).gt(0)
+        heavy = pd.to_numeric(g["heavy_ensemble_score"], errors="coerce") if "heavy_ensemble_score" in g.columns else pd.Series(np.nan, index=g.index)
+        robust = pd.to_numeric(g["robust_public_te_rank"], errors="coerce") if "robust_public_te_rank" in g.columns else pd.Series(np.nan, index=g.index)
+        clusters = nonempty_series(g, "seq_cluster_id")
+        row.update({
+            "selected_n": len(g),
+            "uaug0_n": int((g["uaug_count_numeric"] == 0).sum()),
+            "uaug_positive_n": int(uaug_pos.sum()),
+            "uaug_positive_ratio": float(uaug_pos.mean()) if len(g) else np.nan,
+            "mean_heavy_ensemble_score": float(heavy.mean()) if heavy.notna().any() else np.nan,
+            "mean_robust_public_te_rank": float(robust.mean()) if robust.notna().any() else np.nan,
+            "n_unique_seq_clusters": int(clusters.nunique()),
+            "max_per_seq_cluster": int(clusters.value_counts().max()) if len(clusters) else 0,
+        })
+        rows.append(row)
+    summary = pd.DataFrame(rows)
+    summary.to_csv(OUT_UAUG_SUMMARY_CSV, index=False)
+
+    positive_cols = [c for c in [
+        "library_index", "library_group", "selection_source", "utr_id", "gene_id", "gene_name",
+        "seq_cluster_id", "uaug_count", "length", "gc_content", "robust_public_te_rank",
+        "heavy_ensemble_score", "is_expressed_public", "expression_qc_reason", SEQ,
+    ] if c in x.columns]
+    x[x["uaug_count_numeric"].fillna(0).gt(0)][positive_cols].to_csv(OUT_UAUG_POSITIVE_CSV, index=False)
+
+    total_pos = int(x["uaug_count_numeric"].fillna(0).gt(0).sum())
+    lines = [
+        "uAUG source audit for final selected library",
+        "=" * 100,
+        f"selected_n: {len(x)}",
+        f"uaug0_n: {int((x['uaug_count_numeric'] == 0).sum())}",
+        f"uaug_positive_n: {total_pos}",
+        f"uaug_positive_ratio: {total_pos / len(x):.4f}" if len(x) else "uaug_positive_ratio: NA",
+        "",
+        "[By library_group and selection_source]",
+        summary.to_string(index=False) if len(summary) else "No summary rows.",
+        "",
+        f"Saved CSV summary: {OUT_UAUG_SUMMARY_CSV}",
+        f"Saved positive rows: {OUT_UAUG_POSITIVE_CSV}",
+    ]
+    OUT_UAUG_SUMMARY_TXT.write_text("\n".join(lines), encoding="utf-8")
+
+
+def dry_run_select_uaug0(base_cand, args, quotas, production_lib):
+    uaug0 = pd.to_numeric(base_cand["uaug_count"], errors="coerce").fillna(999).eq(0)
+    base0 = base_cand[uaug0].copy().reset_index(drop=True)
+    evidence0 = base0[
+        optional_bool_gate(base0, "is_expressed_public", default=True) &
+        pd.to_numeric(base0["robust_public_te_rank"], errors="coerce").notna()
+    ].copy()
+
+    selected = []
+    used_seq = set()
+    cluster_counts = defaultdict(int)
+    taken_by_group = defaultdict(int)
+
+    def can_take(row, max_per):
+        seq = row[SEQ]
+        cid = str(row.get("seq_cluster_id", seq))
+        return seq not in used_seq and cluster_counts[cid] < max_per
+
+    def take(pool, n, group, sort_cols, ascending=None, max_per_cluster=None, source=None):
+        source = source or group
+        max_per_cluster = args.max_per_cluster if max_per_cluster is None else max_per_cluster
+        ascending = [False] * len(sort_cols) if ascending is None else ascending
+        rows = []
+        p = pool.copy().sort_values(sort_cols, ascending=ascending)
+        for _, row in p.iterrows():
+            if len(rows) >= n:
+                break
+            if can_take(row, max_per_cluster):
+                rows.append(row)
+                used_seq.add(row[SEQ])
+                cluster_counts[str(row.get("seq_cluster_id", row[SEQ]))] += 1
+        if rows:
+            out = pd.DataFrame(rows)
+            out["library_group"] = group
+            out["selection_source"] = source
+            selected.append(out)
+        taken_by_group[group] += len(rows)
+        return len(rows)
+
+    take(evidence0, quotas["A_publicTE_high_confidence"], "A_publicTE_high_confidence", ["robust_public_te_rank", "day_consensus_TE_rank" if "day_consensus_TE_rank" in evidence0.columns else "cluster_diverse_evidence_score"], source="uaug0_evidence_cand")
+    take(evidence0, quotas["B_TE_model_classifier_supported"], "B_TE_model_classifier_supported", ["model_support_score", "robust_public_te_rank"], source="uaug0_evidence_cand")
+    if "protein_abundance_rank" in evidence0.columns:
+        take(evidence0[evidence0["protein_abundance_rank"].notna()], quotas["C_protein_abundance_supported"], "C_protein_abundance_supported", ["protein_abundance_rank", "cluster_diverse_evidence_score"], source="uaug0_evidence_cand")
+    if "protein_residual_rank" in evidence0.columns:
+        take(evidence0[evidence0["protein_residual_rank"].notna()], quotas["D_protein_residual_supported"], "D_protein_residual_supported", ["protein_residual_rank", "cluster_diverse_evidence_score"], source="uaug0_evidence_cand")
+    if "multi_omics_utr_rank" in evidence0.columns:
+        take(evidence0, quotas["E_multiomics_consensus_high"], "E_multiomics_consensus_high", ["multi_omics_utr_rank", "cluster_diverse_evidence_score"], source="uaug0_evidence_cand")
+
+    robust_rank = pd.to_numeric(base0["robust_public_te_rank"], errors="coerce")
+    exploratory = base0[robust_rank.between(0.35, 0.90) | robust_rank.isna()].copy()
+    if len(exploratory):
+        exploratory["length_bin"] = pd.cut(exploratory["length"], [49, 60, 75, 90, 100], labels=["50-60", "61-75", "76-90", "91-100"])
+        exploratory["gc_bin"] = pd.cut(exploratory["gc_content"], [0.299, 0.45, 0.60, 0.75], labels=["30-45", "45-60", "60-75"])
+        exploratory["diversity_key"] = exploratory["length_bin"].astype(str) + ":" + exploratory["gc_bin"].astype(str) + ":uAUG" + exploratory["uaug_count"].astype(str)
+        exp_rows = []
+        for _, g in exploratory.sort_values("cluster_diverse_evidence_score", ascending=False).groupby("diversity_key", dropna=False):
+            exp_rows.append(g.head(max(1, quotas["F_sequence_diverse_exploratory"] // max(1, exploratory["diversity_key"].nunique()))))
+        exp_pool = pd.concat(exp_rows).sort_values("cluster_diverse_evidence_score", ascending=False) if exp_rows else exploratory
+    else:
+        exp_pool = exploratory
+    take(exp_pool, quotas["F_sequence_diverse_exploratory"], "F_sequence_diverse_exploratory", ["cluster_diverse_evidence_score", "robust_public_te_rank"], source="uaug0_base_cand_exploratory")
+
+    diversity = base0.copy()
+    diversity["diversity_score"] = (
+        (1 - abs(pd.to_numeric(diversity["gc_content"], errors="coerce") - 0.52)) +
+        (1 - abs(pd.to_numeric(diversity["length"], errors="coerce") - 75) / 50)
+    )
+    take(diversity, quotas["G_length_GC_uAUG_diversity"], "G_length_GC_uAUG_diversity", ["diversity_score", "cluster_diverse_evidence_score"], source="uaug0_base_cand_diversity")
+
+    low = base0.copy()
+    low["low_score"] = 1 - pd.to_numeric(low["robust_public_te_rank"], errors="coerce").fillna(1)
+    take(low[pd.to_numeric(low["robust_public_te_rank"], errors="coerce") <= 0.30], quotas["H_low_signal_negative_controls"], "H_low_signal_negative_controls", ["low_score", "gc_content"], source="uaug0_base_cand_low_publicTE")
+    if taken_by_group["H_low_signal_negative_controls"] < quotas["H_low_signal_negative_controls"]:
+        no_evidence_low = low[pd.to_numeric(low["robust_public_te_rank"], errors="coerce").isna()].copy()
+        no_evidence_low["clean_control_score"] = (
+            (1 - abs(pd.to_numeric(no_evidence_low["gc_content"], errors="coerce") - 0.52)) +
+            (1 - abs(pd.to_numeric(no_evidence_low["length"], errors="coerce") - 75) / 50)
+        )
+        take(no_evidence_low, quotas["H_low_signal_negative_controls"] - taken_by_group["H_low_signal_negative_controls"], "H_low_signal_negative_controls", ["clean_control_score"], source="uaug0_base_cand_no_TE_clean_control")
+
+    lib = pd.concat(selected, ignore_index=True) if selected else base0.head(0)
+    if len(lib) < args.n:
+        used_seq = set(lib[SEQ])
+        cluster_counts = defaultdict(int, lib.groupby("seq_cluster_id").size().to_dict() if "seq_cluster_id" in lib.columns else {})
+
+        def fill_from(pool, source):
+            nonlocal lib
+            rows = []
+            p = pool[~pool[SEQ].isin(used_seq)].sort_values(["cluster_diverse_evidence_score", "robust_public_te_rank"], ascending=False)
+            for _, row in p.iterrows():
+                if len(lib) + len(rows) >= args.n:
+                    break
+                cid = str(row.get("seq_cluster_id", row[SEQ]))
+                if cluster_counts[cid] < args.allow_cluster_fill:
+                    row = row.copy()
+                    row["library_group"] = "J_fill_best_remaining_allow_cluster2"
+                    row["selection_source"] = source
+                    rows.append(row)
+                    used_seq.add(row[SEQ])
+                    cluster_counts[cid] += 1
+            if rows:
+                lib = pd.concat([lib, pd.DataFrame(rows)], ignore_index=True, sort=False)
+                taken_by_group["J_fill_best_remaining_allow_cluster2"] += len(rows)
+
+        fill_from(evidence0, "uaug0_fill_evidence_cand")
+        if len(lib) < args.n:
+            fill_from(base0, "uaug0_fill_base_cand_clean_sequence")
+
+    lib = lib.drop_duplicates(subset=[SEQ], keep="first").head(args.n).copy()
+    lib["library_index"] = np.arange(1, len(lib) + 1)
+    unfilled_n = max(0, args.n - len(lib))
+
+    summary = metric_summary(lib, base_candidate_pool=len(base0), evidence_candidate_pool=len(evidence0), unfilled_n=unfilled_n)
+    summary.update({
+        "mode": "uaug0_hard_filter_dry_run",
+        "selected_uaug_positive_n": int(pd.to_numeric(lib.get("uaug_count", pd.Series(dtype=float)), errors="coerce").fillna(0).gt(0).sum()),
+        "selected_uaug0_n": int(pd.to_numeric(lib.get("uaug_count", pd.Series(dtype=float)), errors="coerce").fillna(999).eq(0).sum()),
+    })
+    pd.DataFrame([summary]).to_csv(OUT_UAUG0_DRY_SUMMARY, index=False)
+
+    shortfall_rows = []
+    for group, quota in quotas.items():
+        selected_n = int(taken_by_group[group])
+        shortfall_rows.append({
+            "library_group": group,
+            "quota": quota,
+            "selected_uaug0_dry_run": selected_n,
+            "shortfall": max(0, quota - selected_n),
+            "source_pool": "uaug0_evidence_cand" if group.startswith(("A_", "B_", "C_", "D_", "E_")) else "uaug0_base_cand",
+            "reason": "insufficient uaug0 candidates under cluster/sequence constraints" if selected_n < quota else "filled",
+        })
+    pd.DataFrame(shortfall_rows).to_csv(OUT_UAUG0_SHORTFALL, index=False)
+
+    prod_seq = set(production_lib[SEQ]) if SEQ in production_lib.columns else set()
+    replacement_cols = [c for c in [
+        "library_index", "library_group", "selection_source", "utr_id", "gene_id", "gene_name",
+        "seq_cluster_id", "uaug_count", "length", "gc_content", "robust_public_te_rank",
+        "heavy_ensemble_score", "is_expressed_public", "expression_qc_reason", SEQ,
+    ] if c in lib.columns]
+    lib[~lib[SEQ].isin(prod_seq)][replacement_cols].to_csv(OUT_UAUG0_REPLACEMENTS, index=False)
 
 
 def prep(df):
@@ -413,6 +636,8 @@ def main():
     lib.to_csv(OUT_CSV, index=False)
     write_fasta(lib, OUT_FASTA)
     write_final_diversity_summary(lib, OUT_DIVERSITY)
+    write_uaug_audit(lib)
+    dry_run_select_uaug0(base_cand, args, quotas, lib)
 
     q = [
         "Cluster-diverse evidence-balanced 2000 library summary",
@@ -476,12 +701,24 @@ def main():
         f"Saved CSV: {OUT_CSV}",
         f"Saved FASTA: {OUT_FASTA}",
         f"Saved gene/sequence-cluster summary: {OUT_DIVERSITY}",
+        f"Saved uAUG source summary: {OUT_UAUG_SUMMARY_TXT}",
+        f"Saved uAUG source table: {OUT_UAUG_SUMMARY_CSV}",
+        f"Saved uAUG-positive rows: {OUT_UAUG_POSITIVE_CSV}",
+        f"Saved uAUG=0 dry-run summary: {OUT_UAUG0_DRY_SUMMARY}",
+        f"Saved uAUG=0 dry-run shortfall: {OUT_UAUG0_SHORTFALL}",
+        f"Saved uAUG=0 replacement candidates: {OUT_UAUG0_REPLACEMENTS}",
     ]
     OUT_QC.write_text("\n".join(q), encoding="utf-8")
     print("[SAVED]", OUT_CSV)
     print("[SAVED]", OUT_FASTA)
     print("[SAVED]", OUT_QC)
     print("[SAVED]", OUT_DIVERSITY)
+    print("[SAVED]", OUT_UAUG_SUMMARY_TXT)
+    print("[SAVED]", OUT_UAUG_SUMMARY_CSV)
+    print("[SAVED]", OUT_UAUG_POSITIVE_CSV)
+    print("[SAVED]", OUT_UAUG0_DRY_SUMMARY)
+    print("[SAVED]", OUT_UAUG0_SHORTFALL)
+    print("[SAVED]", OUT_UAUG0_REPLACEMENTS)
 
 
 if __name__ == "__main__":

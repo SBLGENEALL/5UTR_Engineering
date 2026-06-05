@@ -1,5 +1,46 @@
 # CHANGELOG
 
+## 2026-06-05 - PR3-1 planned: uAUG source audit and uAUG=0 dry-run reporting
+
+Branch:
+
+* `improved-v1.2-pr3-selection-policy`
+
+Baseline:
+
+* `improved-v1.2`
+
+Status:
+
+* Reporting-only PR3-1 implementation.
+* Production final library selection behavior is intentionally unchanged.
+* Existing selected 2000 CSV/FASTA filenames remain unchanged.
+
+Changed files:
+
+```text
+01_pipeline/scripts/10_select_2000_cluster_diverse_library.py
+docs/CHANGELOG.md
+```
+
+Planned outputs:
+
+```text
+07_library_design/qc/uaug_source_by_group_summary.txt
+07_library_design/tables/uaug_source_by_group_summary.csv
+07_library_design/tables/uaug_positive_final_library_rows.csv
+07_library_design/tables/uaug0_hard_filter_dry_run_summary.csv
+07_library_design/tables/uaug0_hard_filter_quota_shortfall.csv
+07_library_design/tables/uaug0_replacement_candidates.csv
+```
+
+Purpose:
+
+* Identify which `library_group` and `selection_source` introduce uAUG-positive final library members.
+* Quantify how many current final-library rows would be removed by a strict `uaug_count == 0` policy.
+* Run a uAUG=0 hard-filter dry-run without overwriting the production selected CSV/FASTA.
+* Report whether the 2,000-member library can be refilled from uAUG-free candidates while preserving quota, evidence, and sequence-cluster diversity constraints.
+
 ## 2026-06-04 - PR2 validated and promoted to improved-v1.2
 
 Branch:
