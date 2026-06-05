@@ -1,5 +1,134 @@
 # CHANGELOG
 
+## 2026-06-04 - PR2 validated and promoted to improved-v1.2
+
+Branch:
+
+* `improved-v1.2`
+
+Source branch:
+
+* `improved-v1.1-pr2-tss-expression`
+
+Status:
+
+* Full raw-data validation passed on company workstation.
+* `improved-v1.2` is now the validated working baseline for PR3 development.
+* `main` remains the stable release branch and is not replaced yet.
+
+Validation summary:
+
+* Final library generated successfully.
+* `selected_n = 2000`.
+* CSV line count = 2001 including header.
+* Length mean = 73.527.
+* Length min/max = 50/100.
+* `max_per_cluster_primary = 1`.
+* `heavy_ensemble_score` and `heavy_ensemble_rank` are present in the final selected library.
+
+TSS correction summary:
+
+```text
+trim_to_tss     22,722
+extend_to_tss    9,799
+unchanged         7,827
+no_tss_match      2,112
+total            42,460
+```
+
+TSS confidence summary:
+
+```text
+tss_supported_with_signal  40,348
+no_tss_match                2,112
+```
+
+Model validation, strict `robust_public_te_rank` / `gene_seq_cluster_split` / `40_200` classification:
+
+```text
+ExtraTrees              ROC-AUC 0.7145
+RandomForest            ROC-AUC 0.7092
+HistGradientBoosting    ROC-AUC 0.6770
+```
+
+Reference PR1 baseline:
+
+```text
+RandomForest ROC-AUC 0.671
+```
+
+Leakage/disjointness validation:
+
+* Strict `gene_seq_cluster_split` overlap/leakage was 0 for all four checked targets:
+  * TE
+  * multi-omics
+  * protein abundance
+  * protein residual
+
+Final selection source counts:
+
+```text
+evidence_cand                 1238
+fill_base_cand_clean_sequence  482
+base_cand_diversity            100
+base_cand_low_publicTE         100
+fill_evidence_cand              68
+base_cand_exploratory           12
+```
+
+uAUG audit observations from final 2000 library:
+
+* `uaug_count > 0`: 451 / 2000.
+* `uaug_count = 0`: 1549 / 2000.
+* Top100 by heavy ensemble percentile/rank contained 1 uAUG-positive candidate.
+* Top500 contained 8 uAUG-positive candidates.
+* Upper ~50% heavy-ranked subset contained 26 uAUG-positive candidates among 927 heavy-ranked rows.
+* Mean `heavy_ensemble_score`:
+  * uAUG=0: 0.581325
+  * uAUG=1: 0.316944
+* Mean `robust_public_te_rank`:
+  * uAUG=0: 0.6423
+  * uAUG=1: 0.510599
+
+Interpretation:
+
+* uAUG is a strong negative feature in the current data/model behavior.
+* High-ranked candidates are already strongly depleted for uAUG.
+* The 451 uAUG-positive final rows are likely introduced mainly by quota/fill policy rather than by top-ranked model/evidence behavior.
+
+uAUG by selection source:
+
+```text
+selection_source                   uAUG=0  uAUG=1
+base_cand_diversity                   100       0
+base_cand_exploratory                   4       8
+base_cand_low_publicTE                 56      44
+evidence_cand                        1006     232
+fill_base_cand_clean_sequence          57      11
+fill_evidence_cand                    326     156
+```
+
+PR3 planning implications:
+
+* PR3 should start from `improved-v1.2`.
+* PR3 should focus on selection policy rather than more PR2 bug-fixing.
+* Current A-H quotas and evidence weights are heuristic and should be revisited.
+* Blind fill should be replaced with explicit, auditable buckets.
+* uAUG/uORF handling should become construct-aware:
+  * exploitation/evidence buckets should strongly prefer or require uAUG-free candidates.
+  * uAUG/uORF-positive candidates should be moved to designed controls or explicit exploration ladders rather than accidentally entering by fill logic.
+* Restriction enzyme site checks should become soft/report-only for Gibson assembly unless they conflict with actual construct design.
+
+Recommended PR3 branch:
+
+```text
+improved-v1.2-pr3-selection-policy
+```
+
+Recommended PR3 first step:
+
+* Add reporting-only uAUG source audit and uAUG=0 dry-run selection before changing production output.
+
 ## 2026-06-04 - PR2 validation checkpoint: TSS extension and expressed-only TE labels
 
 Branch:
@@ -16,7 +145,7 @@ Status:
 * Code pushed.
 * `py_compile` passed by Codex for 02/03/10.
 * Synthetic smoke test passed by Codex for group-specific 10 selection.
-* Full raw-data validation pending on company workstation.
+* Full raw-data validation was pending at this checkpoint; it later passed and was promoted to `improved-v1.2`.
 
 Changed files:
 
@@ -59,7 +188,7 @@ Details:
 * Added `selection_source` reporting.
 * Added `evidence_candidate_pool_after_expression_TE_QC` reporting.
 
-Validation required:
+Validation required at checkpoint:
 
 * Full pipeline rerun with real raw data.
 * Check `selected_n` remains 2000.
