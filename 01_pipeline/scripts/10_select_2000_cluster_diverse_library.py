@@ -25,6 +25,7 @@ OUT_UAUG_POSITIVE_CSV = BASE / "07_library_design/tables/uaug_positive_final_lib
 OUT_UAUG0_DRY_SUMMARY = BASE / "07_library_design/tables/uaug0_hard_filter_dry_run_summary.csv"
 OUT_UAUG0_SHORTFALL = BASE / "07_library_design/tables/uaug0_hard_filter_quota_shortfall.csv"
 OUT_UAUG0_REPLACEMENTS = BASE / "07_library_design/tables/uaug0_replacement_candidates.csv"
+OUT_UAUG0_VALIDATION = BASE / "07_library_design/qc/uaug0_production_validation_report.txt"
 for p in [OUT_CSV.parent, OUT_FASTA.parent, OUT_QC.parent, OUT_DIVERSITY.parent, OUT_UAUG_SUMMARY_TXT.parent, OUT_UAUG_SUMMARY_CSV.parent]:
     p.mkdir(parents=True, exist_ok=True)
 
@@ -133,6 +134,44 @@ def metric_summary(df, base_candidate_pool=None, evidence_candidate_pool=None, u
         "n_unique_genes": int(genes.nunique()),
         "max_per_gene": int(genes.value_counts().max()) if len(genes) else 0,
     }
+
+
+def write_uaug0_validation_report(lib, path, requested_n, max_cluster_cap, max_gene_cap):
+    gene_col = choose_gene_column(lib)
+    genes = nonempty_series(lib, gene_col) if gene_col else pd.Series(dtype=str)
+    clusters = nonempty_series(lib, "seq_cluster_id")
+    heavy = pd.to_numeric(lib["heavy_ensemble_score"], errors="coerce") if "heavy_ensemble_score" in lib.columns else pd.Series(np.nan, index=lib.index)
+    robust = pd.to_numeric(lib["robust_public_te_rank"], errors="coerce") if "robust_public_te_rank" in lib.columns else pd.Series(np.nan, index=lib.index)
+    uaug = pd.to_numeric(lib["uaug_count"], errors="coerce") if "uaug_count" in lib.columns else pd.Series(np.nan, index=lib.index)
+    max_per_cluster = int(clusters.value_counts().max()) if len(clusters) else 0
+    max_per_gene = int(genes.value_counts().max()) if len(genes) else 0
+    uaug_positive = int(uaug.fillna(999).gt(0).sum()) if len(uaug) else 0
+    lines = [
+        "uAUG=0 production validation report",
+        "=" * 100,
+        f"selected_n: {len(lib)}",
+        f"requested_n: {requested_n}",
+        f"uaug_positive_n: {uaug_positive}",
+        f"uaug0_policy_pass: {uaug_positive == 0}",
+        "",
+        "[Cluster diversity]",
+        f"n_unique_seq_clusters: {int(clusters.nunique())}",
+        f"max_per_seq_cluster: {max_per_cluster}",
+        f"cluster_cap: {max_cluster_cap}",
+        f"cluster_cap_pass: {max_per_cluster <= max_cluster_cap}",
+        "",
+        "[Gene diversity]",
+        f"gene_column: {gene_col or 'NA'}",
+        f"n_unique_genes: {int(genes.nunique())}",
+        f"max_per_gene: {max_per_gene}",
+        f"gene_cap: {max_gene_cap}",
+        f"gene_cap_pass: {max_per_gene <= max_gene_cap}",
+        "",
+        "[Evidence means]",
+        f"mean_heavy_ensemble_score: {float(heavy.mean()) if heavy.notna().any() else 'NA'}",
+        f"mean_robust_public_te_rank: {float(robust.mean()) if robust.notna().any() else 'NA'}",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def write_uaug_audit(lib):
@@ -434,6 +473,7 @@ def main():
     ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--max-per-cluster", type=int, default=1)
     ap.add_argument("--allow-cluster-fill", type=int, default=2, help="allow this per cluster during final fill if needed")
+    ap.add_argument("--max-per-gene", type=int, default=4, help="maximum selected candidates per gene_name/gene_id when available")
     args = ap.parse_args()
 
     path = choose_input(args.input)
@@ -443,7 +483,7 @@ def main():
     base_cand = df[
         df["length"].between(50, 100) &
         pd.to_numeric(df["gc_content"], errors="coerce").between(0.30, 0.75) &
-        (pd.to_numeric(df["uaug_count"], errors="coerce").fillna(999) <= 1) &
+        (pd.to_numeric(df["uaug_count"], errors="coerce").fillna(999) == 0) &
         df["forbidden_sites"].eq("") &
         df[SEQ].str.len().gt(0) &
         ~df[SEQ].str.contains("N", regex=False)
@@ -466,11 +506,23 @@ def main():
     selected = []
     used_seq = set()
     cluster_counts = defaultdict(int)
+    gene_counts = defaultdict(int)
+    gene_col_for_cap = choose_gene_column(base_cand)
+
+    def gene_key(row):
+        if not gene_col_for_cap:
+            return None
+        val = row.get(gene_col_for_cap)
+        if pd.isna(val) or not str(val).strip():
+            return None
+        return str(val)
 
     def can_take(row, max_per):
         seq = row[SEQ]
         cid = str(row.get("seq_cluster_id", seq))
-        return seq not in used_seq and cluster_counts[cid] < max_per
+        gkey = gene_key(row)
+        gene_ok = gkey is None or gene_counts[gkey] < args.max_per_gene
+        return seq not in used_seq and cluster_counts[cid] < max_per and gene_ok
 
     def take(pool, n, group, sort_cols, ascending=None, max_per_cluster=None, source=None):
         nonlocal selected, used_seq, cluster_counts
@@ -489,6 +541,9 @@ def main():
                 rows.append(row)
                 used_seq.add(row[SEQ])
                 cluster_counts[str(row.get("seq_cluster_id", row[SEQ]))] += 1
+                gkey = gene_key(row)
+                if gkey is not None:
+                    gene_counts[gkey] += 1
         if rows:
             out = pd.DataFrame(rows)
             out["library_group"] = group
@@ -578,6 +633,7 @@ def main():
     controls = parse_reference_controls()
     if len(controls):
         controls = prep(controls)
+        controls = controls[pd.to_numeric(controls["uaug_count"], errors="coerce").fillna(999).eq(0)].copy()
         controls["library_group"] = "I_reference_controls"
         controls["selection_source"] = "reference_control"
         controls["is_reference_control"] = True
@@ -594,6 +650,8 @@ def main():
     if len(lib) < args.n:
         used_seq = set(lib[SEQ])
         cluster_counts = defaultdict(int, lib[~lib["is_reference_control"].fillna(False)].groupby("seq_cluster_id").size().to_dict() if "seq_cluster_id" in lib.columns else {})
+        gene_col_for_cap = choose_gene_column(lib)
+        gene_counts = defaultdict(int, nonempty_series(lib, gene_col_for_cap).value_counts().to_dict() if gene_col_for_cap else {})
         fill = []
         fill_source_counts = defaultdict(int)
 
@@ -604,12 +662,16 @@ def main():
                 if len(lib) + len(fill) >= args.n:
                     break
                 cid = str(row.get("seq_cluster_id", row[SEQ]))
-                if cluster_counts[cid] < args.allow_cluster_fill:
+                gkey = gene_key(row)
+                gene_ok = gkey is None or gene_counts[gkey] < args.max_per_gene
+                if cluster_counts[cid] < args.allow_cluster_fill and gene_ok:
                     row = row.copy()
                     row["selection_source"] = source
                     fill.append(row)
                     used_seq.add(row[SEQ])
                     cluster_counts[cid] += 1
+                    if gkey is not None:
+                        gene_counts[gkey] += 1
                     fill_source_counts[source] += 1
 
         fill_from(evidence_cand, "fill_evidence_cand")
@@ -637,6 +699,7 @@ def main():
     write_fasta(lib, OUT_FASTA)
     write_final_diversity_summary(lib, OUT_DIVERSITY)
     write_uaug_audit(lib)
+    write_uaug0_validation_report(lib, OUT_UAUG0_VALIDATION, args.n, args.allow_cluster_fill, args.max_per_gene)
     dry_run_select_uaug0(base_cand, args, quotas, lib)
 
     q = [
@@ -649,6 +712,8 @@ def main():
         f"selected_n: {len(lib)}",
         f"max_per_cluster_primary: {args.max_per_cluster}",
         f"allow_cluster_fill: {args.allow_cluster_fill}",
+        f"max_per_gene: {args.max_per_gene}",
+        "uaug_policy: production_hard_filter_uaug_count_eq_0",
         "",
         "[Group counts]",
         lib["library_group"].value_counts(dropna=False).to_string(),
@@ -704,6 +769,7 @@ def main():
         f"Saved uAUG source summary: {OUT_UAUG_SUMMARY_TXT}",
         f"Saved uAUG source table: {OUT_UAUG_SUMMARY_CSV}",
         f"Saved uAUG-positive rows: {OUT_UAUG_POSITIVE_CSV}",
+        f"Saved uAUG=0 production validation: {OUT_UAUG0_VALIDATION}",
         f"Saved uAUG=0 dry-run summary: {OUT_UAUG0_DRY_SUMMARY}",
         f"Saved uAUG=0 dry-run shortfall: {OUT_UAUG0_SHORTFALL}",
         f"Saved uAUG=0 replacement candidates: {OUT_UAUG0_REPLACEMENTS}",
@@ -716,6 +782,7 @@ def main():
     print("[SAVED]", OUT_UAUG_SUMMARY_TXT)
     print("[SAVED]", OUT_UAUG_SUMMARY_CSV)
     print("[SAVED]", OUT_UAUG_POSITIVE_CSV)
+    print("[SAVED]", OUT_UAUG0_VALIDATION)
     print("[SAVED]", OUT_UAUG0_DRY_SUMMARY)
     print("[SAVED]", OUT_UAUG0_SHORTFALL)
     print("[SAVED]", OUT_UAUG0_REPLACEMENTS)
