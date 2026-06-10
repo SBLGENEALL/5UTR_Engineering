@@ -41,6 +41,7 @@ BASE = Path.cwd()
 SEQ = "utr5_sequence_tss_corrected"
 
 LABEL_CANDIDATES = [
+    BASE / "04_te_labeling/tables/tss_corrected_5utr_with_seq_clusters.csv",
     BASE / "04_te_labeling/tables/tss_corrected_5utr_multiomics_labels.csv",
     BASE / "04_te_labeling/tables/tss_corrected_5utr_robust_public_te_labels.csv",
 ]
@@ -48,6 +49,7 @@ LABEL_CANDIDATES = [
 OUT_TABLE = BASE / "06_modeling/tables/heavy_rnafold_kmer6_model_search_results.csv"
 OUT_WEIGHTS = BASE / "06_modeling/tables/heavy_rnafold_kmer6_selected_model_weights.csv"
 OUT_CAND = BASE / "06_modeling/tables/heavy_rnafold_kmer6_50_100_candidate_scores.csv"
+OUT_LABEL_HEAVY = BASE / "04_te_labeling/tables/tss_corrected_5utr_with_seq_clusters_and_heavy_scores.csv"
 OUT_SUMMARY = BASE / "06_modeling/tables/heavy_rnafold_kmer6_summary.txt"
 OUT_PLOT = BASE / "06_modeling/plots/heavy_rnafold_kmer6_gene_split_performance.png"
 OUT_LIB = BASE / "07_library_design/tables/selected_1000_50_100bp_HEAVY_RNAfold_kmer6_library.csv"
@@ -55,7 +57,7 @@ OUT_FASTA = BASE / "07_library_design/fasta/selected_1000_50_100bp_HEAVY_RNAfold
 OUT_LIB_SUMMARY = BASE / "07_library_design/qc/selected_1000_50_100bp_HEAVY_RNAfold_kmer6_summary.txt"
 CACHE = BASE / "05_feature_extraction/rnafold/rnafold_features_cache.csv"
 
-for p in [OUT_TABLE.parent, OUT_PLOT.parent, OUT_LIB.parent, OUT_FASTA.parent, OUT_LIB_SUMMARY.parent, CACHE.parent]:
+for p in [OUT_TABLE.parent, OUT_PLOT.parent, OUT_LIB.parent, OUT_FASTA.parent, OUT_LIB_SUMMARY.parent, CACHE.parent, OUT_LABEL_HEAVY.parent]:
     p.mkdir(parents=True, exist_ok=True)
 
 
@@ -322,14 +324,71 @@ def make_classifier(name, n_estimators=2000):
     raise ValueError(name)
 
 
+class UnionFind:
+    def __init__(self):
+        self.parent = {}
+        self.rank = {}
+
+    def add(self, x):
+        if x not in self.parent:
+            self.parent[x] = x
+            self.rank[x] = 0
+
+    def find(self, x):
+        self.add(x)
+        while self.parent[x] != x:
+            self.parent[x] = self.parent[self.parent[x]]
+            x = self.parent[x]
+        return x
+
+    def union(self, a, b):
+        self.add(a)
+        self.add(b)
+        ra, rb = self.find(a), self.find(b)
+        if ra == rb:
+            return
+        if self.rank[ra] < self.rank[rb]:
+            ra, rb = rb, ra
+        self.parent[rb] = ra
+        if self.rank[ra] == self.rank[rb]:
+            self.rank[ra] += 1
+
+
+def split_groups(df, mode):
+    if mode == "gene_split":
+        return df["gene_name"].astype(str).fillna("NA").values if "gene_name" in df.columns else df["utr_id"].astype(str).values
+    if mode == "seq_cluster_split":
+        if "seq_cluster_id" not in df.columns:
+            raise ValueError("seq_cluster_split requires seq_cluster_id. Run 08_jaccard_sequence_cluster_qc.py before 07.")
+        return df["seq_cluster_id"].astype(str).values
+    if mode == "gene_seq_cluster_split":
+        if "seq_cluster_id" not in df.columns:
+            raise ValueError("gene_seq_cluster_split requires seq_cluster_id. Run 08_jaccard_sequence_cluster_qc.py before 07.")
+        uf = UnionFind()
+        for idx, row in df.iterrows():
+            rid = f"row:{idx}"
+            uf.add(rid)
+            if "gene_name" in df.columns and pd.notna(row.get("gene_name")):
+                uf.union(rid, f"gene:{row['gene_name']}")
+            uf.union(rid, f"cluster:{row['seq_cluster_id']}")
+        return np.array([uf.find(f"row:{idx}") for idx in df.index])
+    raise ValueError(mode)
+
+
 def split_idx(df, mode):
     if mode == "random":
         idx = np.arange(len(df))
         return train_test_split(idx, test_size=0.2, random_state=42)
-    groups = df["gene_name"].astype(str).fillna("NA").values if "gene_name" in df.columns else df["utr_id"].astype(str).values
+
+    groups = split_groups(df, mode)
     uniq = np.array(sorted(pd.unique(groups)))
-    tr_g, te_g = train_test_split(uniq, test_size=0.2, random_state=42)
-    return np.where(np.isin(groups, tr_g))[0], np.where(np.isin(groups, te_g))[0]
+    for seed in range(42, 142):
+        tr_g, te_g = train_test_split(uniq, test_size=0.2, random_state=seed)
+        tr = np.where(np.isin(groups, tr_g))[0]
+        te = np.where(np.isin(groups, te_g))[0]
+        if len(tr) and len(te):
+            return tr, te
+    raise RuntimeError(f"Could not make split for {mode}")
 
 
 def reg_metrics(y, p):
@@ -395,6 +454,26 @@ def filter_df(df, name):
     return df[mask].copy().reset_index(drop=True)
 
 
+def cluster_representative_rows(df, score_cols=None):
+    if "seq_cluster_id" not in df.columns:
+        return df
+    score_cols = score_cols or [
+        "robust_public_te_rank",
+        "multi_omics_utr_rank",
+        "protein_residual_rank",
+        "protein_abundance_rank",
+    ]
+    sort_cols = [c for c in score_cols if c in df.columns]
+    if sort_cols:
+        return (
+            df.sort_values(sort_cols, ascending=[False] * len(sort_cols))
+            .groupby("seq_cluster_id", as_index=False)
+            .head(1)
+            .reset_index(drop=True)
+        )
+    return df.drop_duplicates("seq_cluster_id").reset_index(drop=True)
+
+
 def forbidden_sites(seq):
     sites = {
         "BsaI_GGTCTC": "GGTCTC",
@@ -435,6 +514,14 @@ def select_candidate_space(df):
 
 def rank_pct(s):
     return pd.to_numeric(s, errors="coerce").rank(pct=True)
+
+
+def merge_heavy_scores_to_label_table(label_df, cand):
+    score_cols = ["heavy_ensemble_score", "heavy_ensemble_rank"]
+    pred_cols = [c for c in cand.columns if c.startswith("heavy_model_")]
+    keep = [SEQ] + [c for c in score_cols + pred_cols if c in cand.columns]
+    scores = cand[keep].drop_duplicates(subset=[SEQ]).copy()
+    return label_df.merge(scores, on=SEQ, how="left")
 
 
 def make_library(cand):
@@ -519,6 +606,8 @@ def main():
     ap.add_argument("--no-onehot", action="store_true")
     ap.add_argument("--top-models", type=int, default=12)
     ap.add_argument("--filters", default="40_200_strict,20_500_relaxed,proteomics_20_500_relaxed")
+    ap.add_argument("--split-modes", default="random,gene_split,seq_cluster_split,gene_seq_cluster_split")
+    ap.add_argument("--train-cluster-representative-only", action="store_true")
     args = ap.parse_args()
 
     df, label_path = load_label()
@@ -527,11 +616,14 @@ def main():
     filters = [x.strip() for x in args.filters.split(",") if x.strip()]
     targets = [c for c in ["robust_public_te_rank", "multi_omics_utr_rank", "protein_abundance_rank", "protein_residual_rank"] if c in df.columns]
     models = ["ExtraTrees", "RandomForest", "HistGradientBoosting"]
+    split_modes = [x.strip() for x in args.split_modes.split(",") if x.strip()]
     rows = []
     feature_cache = {}
 
     for filt in filters:
         sub0 = filter_df(df, filt)
+        if args.train_cluster_representative_only:
+            sub0 = cluster_representative_rows(sub0)
         print("\n" + "=" * 100)
         print("[FILTER]", filt, "rows", len(sub0), "proteomics", int(sub0.get("has_proteomics_label", pd.Series(False, index=sub0.index)).sum()))
         print("=" * 100)
@@ -559,7 +651,7 @@ def main():
 
             y = pd.to_numeric(sub[target], errors="coerce").values
 
-            for split_mode in ["random", "gene_split"]:
+            for split_mode in split_modes:
                 tr, te = split_idx(sub, split_mode)
                 for model_name in models:
                     print("[REG]", filt, target, split_mode, model_name)
@@ -587,12 +679,15 @@ def main():
                 Xc = X.loc[cmask].reset_index(drop=True)
                 yc = (pd.to_numeric(cdf[target], errors="coerce").values >= hi).astype(int)
                 if len(np.unique(yc)) == 2:
-                    for split_mode in ["random", "gene_split"]:
+                    for split_mode in split_modes:
                         if split_mode == "random":
                             idx = np.arange(len(cdf))
                             tr, te = train_test_split(idx, test_size=0.2, random_state=42, stratify=yc)
                         else:
                             tr, te = split_idx(cdf, split_mode)
+                        if len(np.unique(yc[tr])) < 2 or len(np.unique(yc[te])) < 2:
+                            print("  [SKIP split one-class]", split_mode)
+                            continue
                         for model_name in models:
                             print("[CLF]", filt, target, split_mode, model_name)
                             clf = make_classifier(model_name, n_estimators=args.n_estimators)
@@ -619,8 +714,12 @@ def main():
     res.to_csv(OUT_TABLE, index=False)
     plot_results(res)
 
-    gene = res[res["split_mode"] == "gene_split"].sort_values("selection_metric", ascending=False).copy()
-    selected = gene.head(args.top_models).copy()
+    selected_pool = pd.DataFrame()
+    for preferred_split in ["gene_seq_cluster_split", "seq_cluster_split", "gene_split", "random"]:
+        selected_pool = res[res["split_mode"] == preferred_split].sort_values("selection_metric", ascending=False).copy()
+        if not selected_pool.empty:
+            break
+    selected = selected_pool.head(args.top_models).copy()
     selected.to_csv(OUT_WEIGHTS, index=False)
 
     # Final candidate scoring
@@ -635,6 +734,8 @@ def main():
         model_name = row["model"]
 
         train0 = filter_df(df, filt)
+        if args.train_cluster_representative_only:
+            train0 = cluster_representative_rows(train0)
         valid = pd.to_numeric(train0[target], errors="coerce").notna()
         train = train0[valid].copy().reset_index(drop=True)
         if task == "classification":
@@ -679,6 +780,8 @@ def main():
 
     cand["heavy_ensemble_rank"] = rank_pct(cand["heavy_ensemble_score"])
     cand.to_csv(OUT_CAND, index=False)
+    label_with_heavy = merge_heavy_scores_to_label_table(df, cand)
+    label_with_heavy.to_csv(OUT_LABEL_HEAVY, index=False)
 
     lib = make_library(cand)
     lib.to_csv(OUT_LIB, index=False)
@@ -705,18 +808,21 @@ def main():
         + f"n_estimators: {args.n_estimators}\n"
         + f"kmax: {args.kmax}\n"
         + f"use_rnafold: {not args.no_rnafold}\n"
-        + f"use_onehot: {not args.no_onehot}\n\n"
-        + "[Selected gene-split models]\n"
+        + f"use_onehot: {not args.no_onehot}\n"
+        + f"split_modes: {split_modes}\n"
+        + f"train_cluster_representative_only: {args.train_cluster_representative_only}\n\n"
+        + "[Selected leakage-aware models]\n"
         + selected.to_string(index=False)
-        + "\n\n[Top 30 gene-split rows]\n"
-        + gene.head(30).to_string(index=False)
-        + f"\n\nSaved results: {OUT_TABLE}\nSaved weights: {OUT_WEIGHTS}\nSaved candidate scores: {OUT_CAND}\nSaved final library: {OUT_LIB}\nSaved plot: {OUT_PLOT}\n",
+        + "\n\n[Top 30 selected-pool rows]\n"
+        + selected_pool.head(30).to_string(index=False)
+        + f"\n\nSaved results: {OUT_TABLE}\nSaved weights: {OUT_WEIGHTS}\nSaved candidate scores: {OUT_CAND}\nSaved integrated heavy-score labels: {OUT_LABEL_HEAVY}\nSaved final library: {OUT_LIB}\nSaved plot: {OUT_PLOT}\n",
         encoding="utf-8"
     )
 
     print("[SAVED]", OUT_TABLE)
     print("[SAVED]", OUT_WEIGHTS)
     print("[SAVED]", OUT_CAND)
+    print("[SAVED]", OUT_LABEL_HEAVY)
     print("[SAVED]", OUT_SUMMARY)
     print("[SAVED]", OUT_LIB)
     print("[SAVED]", OUT_FASTA)

@@ -24,6 +24,7 @@ DEFAULT_INPUTS = [
     BASE / "04_te_labeling/tables/tss_corrected_5utr_robust_public_te_labels.csv",
 ]
 OUT = BASE / "06_modeling/tables/cluster_aware_classification_benchmark.csv"
+DISJOINT_OUT = BASE / "06_modeling/tables/cluster_split_disjointness_check.csv"
 PLOT = BASE / "06_modeling/plots/cluster_aware_classification_benchmark.png"
 REPORT = BASE / "06_modeling/tables/cluster_aware_classification_summary.txt"
 for p in [OUT.parent, PLOT.parent]:
@@ -190,6 +191,75 @@ def make_groups(df, split_mode):
     raise ValueError(split_mode)
 
 
+def nonempty_values(df, col):
+    if col not in df.columns:
+        return set()
+    vals = df[col].dropna().astype(str).str.strip()
+    vals = vals[(vals != "") & (vals.str.lower() != "nan")]
+    return set(vals)
+
+
+def gene_key_column(df):
+    for col in ["gene_name", "gene_id"]:
+        if nonempty_values(df, col):
+            return col
+    return None
+
+
+def overlap_examples(values, limit=10):
+    values = sorted(values)
+    return ";".join(values[:limit])
+
+
+def disjointness_row(df, tr, te, target, split_mode):
+    train = df.iloc[tr]
+    test = df.iloc[te]
+    gene_col = gene_key_column(df)
+    if gene_col:
+        train_genes = nonempty_values(train, gene_col)
+        test_genes = nonempty_values(test, gene_col)
+    else:
+        train_genes = set()
+        test_genes = set()
+
+    train_clusters = nonempty_values(train, "seq_cluster_id")
+    test_clusters = nonempty_values(test, "seq_cluster_id")
+    gene_overlap = train_genes & test_genes
+    cluster_overlap = train_clusters & test_clusters
+    pass_gene = len(gene_overlap) == 0 if gene_col else False
+    pass_cluster = len(cluster_overlap) == 0
+
+    if split_mode == "gene_split":
+        pass_required = pass_gene
+    elif split_mode == "seq_cluster_split":
+        pass_required = pass_cluster
+    elif split_mode == "gene_seq_cluster_split":
+        pass_required = pass_gene and pass_cluster
+    else:
+        pass_required = True
+
+    return {
+        "target": target,
+        "split_mode": split_mode,
+        "status": "ok",
+        "n_total": len(df),
+        "n_train": len(tr),
+        "n_test": len(te),
+        "gene_key_column": gene_col or "MISSING",
+        "train_unique_genes": len(train_genes),
+        "test_unique_genes": len(test_genes),
+        "gene_overlap_count": len(gene_overlap),
+        "gene_overlap_examples": overlap_examples(gene_overlap),
+        "train_unique_seq_clusters": len(train_clusters),
+        "test_unique_seq_clusters": len(test_clusters),
+        "seq_cluster_overlap_count": len(cluster_overlap),
+        "seq_cluster_overlap_examples": overlap_examples(cluster_overlap),
+        "pass_gene_disjoint": pass_gene,
+        "pass_seq_cluster_disjoint": pass_cluster,
+        "pass_required_for_split": pass_required,
+    }
+
+
 def split_indices(df, y, split_mode):
     if split_mode == "random":
         return train_test_split(np.arange(len(df)), test_size=0.2, random_state=42, stratify=y)
@@ -249,6 +319,7 @@ def main():
 
     X = make_features(df, kmax=args.kmax)
     rows = []
+    disjoint_rows = []
     for target in targets:
         valid = pd.to_numeric(df[target], errors="coerce").notna()
         if valid.sum() < 500:
@@ -273,8 +344,31 @@ def main():
                 tr, te = split_indices(sub, y, split_mode)
             except Exception as e:
                 rows.append({"target": target, "split_mode": split_mode, "model": "NA", "error": str(e)})
+                if split_mode != "random":
+                    disjoint_rows.append({
+                        "target": target,
+                        "split_mode": split_mode,
+                        "status": f"split_failed: {e}",
+                        "n_total": len(sub),
+                        "n_train": np.nan,
+                        "n_test": np.nan,
+                        "gene_key_column": gene_key_column(sub) or "MISSING",
+                        "train_unique_genes": np.nan,
+                        "test_unique_genes": np.nan,
+                        "gene_overlap_count": np.nan,
+                        "gene_overlap_examples": "",
+                        "train_unique_seq_clusters": np.nan,
+                        "test_unique_seq_clusters": np.nan,
+                        "seq_cluster_overlap_count": np.nan,
+                        "seq_cluster_overlap_examples": "",
+                        "pass_gene_disjoint": False,
+                        "pass_seq_cluster_disjoint": False,
+                        "pass_required_for_split": False,
+                    })
                 print("  [SPLIT FAIL]", split_mode, e)
                 continue
+            if split_mode != "random":
+                disjoint_rows.append(disjointness_row(sub, tr, te, target, split_mode))
             for model_name in models:
                 clf = model_factory(model_name, args.n_estimators)
                 clf.fit(Xc.iloc[tr], y[tr])
@@ -305,6 +399,11 @@ def main():
 
     res = pd.DataFrame(rows)
     res.to_csv(OUT, index=False)
+    disjoint = pd.DataFrame(disjoint_rows)
+    disjoint.to_csv(DISJOINT_OUT, index=False)
+    failed_disjoint = pd.DataFrame()
+    if len(disjoint):
+        failed_disjoint = disjoint[~disjoint["pass_required_for_split"].fillna(False).astype(bool)].copy()
 
     ok = res[res.get("roc_auc", pd.Series(dtype=float)).notna()].copy()
     if len(ok):
@@ -325,6 +424,8 @@ def main():
         f"rows after filter/dedup: {len(df)}",
         f"targets: {targets}",
         f"output: {OUT}",
+        f"disjointness_check: {DISJOINT_OUT}",
+        f"disjointness_required_failures: {len(failed_disjoint)}",
         f"plot: {PLOT}",
         "",
         "[Top rows by selection_metric]",
@@ -332,8 +433,11 @@ def main():
     ]
     REPORT.write_text("\n".join(lines), encoding="utf-8")
     print("[SAVED]", OUT)
+    print("[SAVED]", DISJOINT_OUT)
     print("[SAVED]", REPORT)
     print("[SAVED]", PLOT)
+    if len(failed_disjoint):
+        raise SystemExit(f"Cluster split disjointness check failed: {len(failed_disjoint)} rows. See {DISJOINT_OUT}")
 
 
 if __name__ == "__main__":

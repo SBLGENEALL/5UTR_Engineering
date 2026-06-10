@@ -1,0 +1,29 @@
+v1.3 final library QC summary
+recorded_date: 2026-06-10
+validation_status: passed
+validation_source: PR3-2 workstation validation
+
+selected_n: 2000
+requested_n: 2000
+uaug_positive_n: 0
+uaug0_policy_pass: True
+
+n_unique_seq_clusters: 1937
+max_per_seq_cluster: 2
+cluster_cap: 2
+cluster_cap_pass: True
+
+gene_key: gene_name
+n_unique_genes: 1896
+max_per_gene: 3
+gene_cap: 4
+gene_cap_pass: True
+
+mean_heavy_ensemble_score: 0.5811515
+mean_robust_public_te_rank: 0.642380
+
+release_branch: v1.3
+main_merge_performed: False
+raw_data_included: False
+intermediate_outputs_included: False
+cache_or_log_files_included: False

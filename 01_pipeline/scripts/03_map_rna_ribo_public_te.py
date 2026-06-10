@@ -1,4 +1,5 @@
 from pathlib import Path
+import argparse
 import json
 import pandas as pd
 import numpy as np
@@ -77,6 +78,13 @@ def residual_rank(log_rna, log_ribo):
     return pd.Series(res).rank(pct=True).values
 
 cols=cfg['columns']; cf=cfg['candidate_filter']; tf=cfg['training_filter']; w=cfg['robust_public_te_score']
+ap = argparse.ArgumentParser(description="Map public RNA/Ribo counts and compute expressed-only TE labels")
+ap.add_argument("--rna-day3-raw-mean-min", type=float, default=float(tf['rna_day3_raw_mean_min']))
+ap.add_argument("--rna-day6-raw-mean-min", type=float, default=float(tf['rna_day6_raw_mean_min']))
+ap.add_argument("--ribo-day3-raw-mean-min", type=float, default=float(tf['ribo_day3_raw_mean_min']))
+ap.add_argument("--ribo-day6-raw-mean-min", type=float, default=float(tf['ribo_day6_raw_mean_min']))
+ap.add_argument("--te-pseudocount", type=float, default=1e-6)
+args = ap.parse_args()
 utr=pd.read_csv(UTR)
 utr['gene_symbol_key']=utr['gene_name'].apply(norm_symbol)
 rna=read_table_flexible(RNA); ribo=read_table_flexible(RIBO)
@@ -104,38 +112,75 @@ bs=pd.DataFrame({
     'ribo_day6_cpm_mean':ribo[[c+'_cpm' for c in ribo_day6]].mean(axis=1),
 }).groupby('gene_symbol_key', as_index=False).mean(numeric_only=True)
 df=utr.merge(rs,on='gene_symbol_key',how='left').merge(bs,on='gene_symbol_key',how='left')
-pc=1e-6
-df['te_day3_norm']=(df.ribo_day3_cpm_mean+pc)/(df.rna_day3_cpm_mean+pc)
-df['te_day6_norm']=(df.ribo_day6_cpm_mean+pc)/(df.rna_day6_cpm_mean+pc)
-df['te_mean_norm']=df[['te_day3_norm','te_day6_norm']].mean(axis=1)
-df['log2_te_day3_norm']=np.log2(df.te_day3_norm+pc)
-df['log2_te_day6_norm']=np.log2(df.te_day6_norm+pc)
-df['log2_te_mean_norm']=np.log2(df.te_mean_norm+pc)
-df['mean_TE_rank']=rank_pct(df.log2_te_mean_norm)
-df['day3_TE_rank']=rank_pct(df.log2_te_day3_norm)
-df['day6_TE_rank']=rank_pct(df.log2_te_day6_norm)
-df['day_consensus_TE_rank']=df[['day3_TE_rank','day6_TE_rank']].min(axis=1)
-df['ribo_abundance_rank']=rank_pct(np.log2((df.ribo_day3_cpm_mean+df.ribo_day6_cpm_mean)/2+pc))
-avg_rna=((df.rna_day3_cpm_mean+df.rna_day6_cpm_mean)/2).fillna(0).values
-avg_ribo=((df.ribo_day3_cpm_mean+df.ribo_day6_cpm_mean)/2).fillna(0).values
-df['residual_TE_rank']=residual_rank(np.log2(avg_rna+pc), np.log2(avg_ribo+pc))
+df['has_rna_label']=df.rna_day3_raw_mean.notna() & df.rna_day6_raw_mean.notna()
+df['has_ribo_label']=df.ribo_day3_raw_mean.notna() & df.ribo_day6_raw_mean.notna()
+df['rna_day3_expression_pass']=pd.to_numeric(df.rna_day3_raw_mean, errors='coerce') >= args.rna_day3_raw_mean_min
+df['rna_day6_expression_pass']=pd.to_numeric(df.rna_day6_raw_mean, errors='coerce') >= args.rna_day6_raw_mean_min
+df['ribo_day3_expression_pass']=pd.to_numeric(df.ribo_day3_raw_mean, errors='coerce') >= args.ribo_day3_raw_mean_min
+df['ribo_day6_expression_pass']=pd.to_numeric(df.ribo_day6_raw_mean, errors='coerce') >= args.ribo_day6_raw_mean_min
+df['is_expressed_public']=(
+    df.has_rna_label & df.has_ribo_label &
+    df.rna_day3_expression_pass & df.rna_day6_expression_pass &
+    df.ribo_day3_expression_pass & df.ribo_day6_expression_pass
+)
+
+def expression_qc_reason(row):
+    checks = [
+        ('rna_day3', 'rna_day3_raw_mean', args.rna_day3_raw_mean_min),
+        ('rna_day6', 'rna_day6_raw_mean', args.rna_day6_raw_mean_min),
+        ('ribo_day3', 'ribo_day3_raw_mean', args.ribo_day3_raw_mean_min),
+        ('ribo_day6', 'ribo_day6_raw_mean', args.ribo_day6_raw_mean_min),
+    ]
+    reasons = []
+    for name, col, threshold in checks:
+        value = pd.to_numeric(pd.Series([row.get(col)]), errors='coerce').iloc[0]
+        if pd.isna(value):
+            reasons.append(f'missing_{name}')
+        elif value < threshold:
+            reasons.append(f'low_{name}')
+    return 'expressed' if not reasons else ';'.join(reasons)
+
+df['expression_qc_reason']=df.apply(expression_qc_reason, axis=1)
+pc=args.te_pseudocount
+expressed=df.is_expressed_public.fillna(False).astype(bool)
+for c in [
+    'te_day3_norm', 'te_day6_norm', 'te_mean_norm',
+    'log2_te_day3_norm', 'log2_te_day6_norm', 'log2_te_mean_norm',
+    'mean_TE_rank', 'day3_TE_rank', 'day6_TE_rank', 'day_consensus_TE_rank',
+    'ribo_abundance_rank', 'residual_TE_rank',
+]:
+    df[c]=np.nan
+df.loc[expressed, 'te_day3_norm']=(df.loc[expressed, 'ribo_day3_cpm_mean']+pc)/(df.loc[expressed, 'rna_day3_cpm_mean']+pc)
+df.loc[expressed, 'te_day6_norm']=(df.loc[expressed, 'ribo_day6_cpm_mean']+pc)/(df.loc[expressed, 'rna_day6_cpm_mean']+pc)
+df.loc[expressed, 'te_mean_norm']=df.loc[expressed, ['te_day3_norm','te_day6_norm']].mean(axis=1)
+df.loc[expressed, 'log2_te_day3_norm']=np.log2(df.loc[expressed, 'te_day3_norm']+pc)
+df.loc[expressed, 'log2_te_day6_norm']=np.log2(df.loc[expressed, 'te_day6_norm']+pc)
+df.loc[expressed, 'log2_te_mean_norm']=np.log2(df.loc[expressed, 'te_mean_norm']+pc)
+df.loc[expressed, 'mean_TE_rank']=rank_pct(df.loc[expressed, 'log2_te_mean_norm'])
+df.loc[expressed, 'day3_TE_rank']=rank_pct(df.loc[expressed, 'log2_te_day3_norm'])
+df.loc[expressed, 'day6_TE_rank']=rank_pct(df.loc[expressed, 'log2_te_day6_norm'])
+df.loc[expressed, 'day_consensus_TE_rank']=df.loc[expressed, ['day3_TE_rank','day6_TE_rank']].min(axis=1)
+df.loc[expressed, 'ribo_abundance_rank']=rank_pct(np.log2((df.loc[expressed, 'ribo_day3_cpm_mean']+df.loc[expressed, 'ribo_day6_cpm_mean'])/2+pc))
+avg_rna=((df.loc[expressed, 'rna_day3_cpm_mean']+df.loc[expressed, 'rna_day6_cpm_mean'])/2).values
+avg_ribo=((df.loc[expressed, 'ribo_day3_cpm_mean']+df.loc[expressed, 'ribo_day6_cpm_mean'])/2).values
+df.loc[expressed, 'residual_TE_rank']=residual_rank(np.log2(avg_rna+pc), np.log2(avg_ribo+pc))
 if 'tss_confidence' in df.columns:
     df['tss_confidence_score']=(df.tss_confidence.astype(str)=='tss_supported_with_signal').astype(float)
 else:
     df['tss_confidence_score']=0.0
-df['robust_public_te_score']=(w['mean_te_rank_weight']*df.mean_TE_rank.fillna(0)+w['day_consensus_rank_weight']*df.day_consensus_TE_rank.fillna(0)+w['residual_te_rank_weight']*pd.Series(df.residual_TE_rank).fillna(0)+w['ribo_abundance_rank_weight']*df.ribo_abundance_rank.fillna(0)+w['tss_confidence_weight']*df.tss_confidence_score.fillna(0))
-df['robust_public_te_rank']=rank_pct(df.robust_public_te_score)
+df['robust_public_te_score']=np.nan
+df.loc[expressed, 'robust_public_te_score']=(w['mean_te_rank_weight']*df.loc[expressed, 'mean_TE_rank'].fillna(0)+w['day_consensus_rank_weight']*df.loc[expressed, 'day_consensus_TE_rank'].fillna(0)+w['residual_te_rank_weight']*df.loc[expressed, 'residual_TE_rank'].fillna(0)+w['ribo_abundance_rank_weight']*df.loc[expressed, 'ribo_abundance_rank'].fillna(0)+w['tss_confidence_weight']*df.loc[expressed, 'tss_confidence_score'].fillna(0))
+df['robust_public_te_rank']=np.nan
+df.loc[expressed, 'robust_public_te_rank']=rank_pct(df.loc[expressed, 'robust_public_te_score'])
 seq=df.utr5_sequence_tss_corrected.fillna('').astype(str)
 df['utr5_length_final']=seq.str.len()
 df['gc_content']=seq.apply(gc_content)
 df['uaug_count']=seq.str.count('ATG')
-df['has_rna_label']=df.rna_day3_raw_mean.notna() & df.rna_day6_raw_mean.notna()
-df['has_ribo_label']=df.ribo_day3_raw_mean.notna() & df.ribo_day6_raw_mean.notna()
 df['primary_length_50_100']=df.utr5_length_final.between(cf['primary_min_length'], cf['primary_max_length'])
 df['train_length_40_200']=df.utr5_length_final.between(40,200)
 df['gc_pass']=df.gc_content.between(cf['gc_min'], cf['gc_max'])
 df['uaug_pass']=df.uaug_count <= int(cf['allow_uaug_max'])
-ready=(df.has_rna_label & df.has_ribo_label & df.primary_length_50_100 & df.gc_pass & df.uaug_pass & (df.rna_day3_raw_mean>=tf['rna_day3_raw_mean_min']) & (df.rna_day6_raw_mean>=tf['rna_day6_raw_mean_min']) & (df.ribo_day3_raw_mean>=tf['ribo_day3_raw_mean_min']) & (df.ribo_day6_raw_mean>=tf['ribo_day6_raw_mean_min']) & df.robust_public_te_rank.notna())
+ready=(df.is_expressed_public & df.primary_length_50_100 & df.gc_pass & df.uaug_pass & df.robust_public_te_rank.notna())
 df['training_ready_50_100bp']=ready
 df.to_csv(OUT,index=False)
 df[df.training_ready_50_100bp].to_csv(READY,index=False)
@@ -144,10 +189,18 @@ summary=[
     f'rna_gene_col: {rna_gene}', f'ribo_gene_col: {ribo_gene}',
     f'rna_day3: {rna_day3}', f'rna_day6: {rna_day6}',
     f'ribo_day3: {ribo_day3}', f'ribo_day6: {ribo_day6}',
-    f'UTR_rows: {len(df)}', f'training_ready_50_100bp: {int(ready.sum())}', ''
+    f'rna_day3_raw_mean_min: {args.rna_day3_raw_mean_min}',
+    f'rna_day6_raw_mean_min: {args.rna_day6_raw_mean_min}',
+    f'ribo_day3_raw_mean_min: {args.ribo_day3_raw_mean_min}',
+    f'ribo_day6_raw_mean_min: {args.ribo_day6_raw_mean_min}',
+    f'UTR_rows: {len(df)}',
+    f'is_expressed_public: {int(df.is_expressed_public.sum())}',
+    f'robust_public_te_rank_non_null: {int(df.robust_public_te_rank.notna().sum())}',
+    f'training_ready_50_100bp: {int(ready.sum())}', ''
 ]
-for c in ['has_rna_label','has_ribo_label','primary_length_50_100','train_length_40_200','gc_pass','uaug_pass','training_ready_50_100bp']:
+for c in ['has_rna_label','has_ribo_label','rna_day3_expression_pass','rna_day6_expression_pass','ribo_day3_expression_pass','ribo_day6_expression_pass','is_expressed_public','primary_length_50_100','train_length_40_200','gc_pass','uaug_pass','training_ready_50_100bp']:
     summary.append('\n'+c+'\n'+df[c].value_counts(dropna=False).to_string())
+summary.append('\nexpression_qc_reason\n'+df.expression_qc_reason.value_counts(dropna=False).head(30).to_string())
 QC.write_text('\n'.join(summary), encoding='utf-8')
 print('[SAVED]', OUT, df.shape)
 print('[SAVED]', READY, int(ready.sum()))
