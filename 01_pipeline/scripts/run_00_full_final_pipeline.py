@@ -33,7 +33,12 @@ for step in steps:
     elif step == "09_cluster_aware_classification_benchmark.py":
         cmd += ["--length-min", "20", "--length-max", "500", "--kmax", "5", "--n-estimators", "1000"]
     elif step == "10_select_2000_cluster_diverse_library.py":
-        cmd += ["--n", "2000", "--max-per-cluster", "1", "--allow-cluster-fill", "2"]
+        cmd += [
+            "--n", "2000",
+            "--max-per-cluster", "1",
+            "--allow-cluster-fill", "2",
+            "--max-per-gene", "3",
+        ]
     r = subprocess.run(cmd)
     if r.returncode != 0:
         raise SystemExit(f"FAILED: {step}")

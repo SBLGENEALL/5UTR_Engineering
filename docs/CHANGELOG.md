@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-06-12 - v1.4 PR1 non-J refill correction
+
+* Rebalanced A-H primary quotas and reduced H negative controls from 100 to 50.
+* Added ordered K1-K4 non-J refill pools for A/B/E evidence, C/D proteomics,
+  classifier/model support, and F/G diversity.
+* Enforced final `max_per_gene <= 3` and `max_per_seq_cluster <= 2`.
+* Added `v1.4_selection_policy_qc.csv` with shortage, group, and support totals.
+* Kept uAUG0, 50-100 nt, forbidden-site, and unique-sequence filters unchanged.
+
 ## 2026-06-10 - v1.4 PR1 QC audit implementation
 
 Branch:

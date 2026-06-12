@@ -85,7 +85,7 @@ Run affected stages:
 python 01_pipeline/scripts/04_preprocess_heffner_proteomics.py
 python 01_pipeline/scripts/05_integrate_proteomics_multiomics.py
 python 01_pipeline/scripts/10_select_2000_cluster_diverse_library.py \
-  --n 2000 --max-per-cluster 1 --allow-cluster-fill 2
+  --n 2000 --max-per-cluster 1 --allow-cluster-fill 2 --max-per-gene 3
 python 01_pipeline/scripts/11_v14_qc_audit.py \
   --baseline-v1.3 07_library_design/tables/v1.3_selected_2000_library.csv
 ```
@@ -97,9 +97,15 @@ accession-to-gene conversion success rate is reported.
 gene-to-corrected-UTR mapping success rate is reported.
 unmapped accession and unmapped gene tables are emitted.
 selected_n == 2000.
+shortage_n == 0.
 J_fill_selected_n == 0.
-selection refill uses A/B/C/E evidence groups only.
+selection refill uses ordered K1 A/B/E evidence, K2 C/D proteomics,
+K3 classifier/model, and K4 F/G diversity pools.
 F/G diversity and H negative-control groups remain available.
+max_per_gene <= 3.
+max_per_seq_cluster <= 2.
+v1.4_selection_policy_qc.csv reports A/B/C/D/E/F/G/H/K counts and
+protein-, classifier-, and multiomics-supported selected totals.
 CHO mapping summary contains all selected library rows.
 suspected non-CHO/hallucinated sequences are explicitly listed.
 Excel, PPT, length/GC tables, charts, and v1.3 comparison are generated.

@@ -5,7 +5,7 @@ commands=[
     ["07_heavy_rnafold_kmer6_automl.py"],
     ["08_jaccard_sequence_cluster_qc.py","--k","6","--jaccard-threshold","0.85","--containment-threshold","0.90","--cluster-scope","all"],
     ["09_cluster_aware_classification_benchmark.py","--length-min","20","--length-max","500","--kmax","5","--n-estimators","1000"],
-    ["10_select_2000_cluster_diverse_library.py","--n","2000","--max-per-cluster","1","--allow-cluster-fill","2"],
+    ["10_select_2000_cluster_diverse_library.py","--n","2000","--max-per-cluster","1","--allow-cluster-fill","2","--max-per-gene","3"],
 ]
 for cmd in commands:
     step=cmd[0]
