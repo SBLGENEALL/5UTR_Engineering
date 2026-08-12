@@ -1,0 +1,9 @@
+sample,role,bin_order,gate_pct,n_cells_sorted,bin_mfi_geomean,replicate,notes
+pDNA,pdna,,,,,rep1,plasmid pool amplicon NGS (previous run - input DNA representation before transfection)
+unsorted,unsorted,,,,,rep1,gDNA from library-integrated cells with NO FACS gate (post-transfection/selection baseline; NOT the same as pDNA)
+bin1,bin,1,20,,,rep1,LOWEST mCherry MFI gate within mCherry+GFP- population
+bin2,bin,2,30,,,rep1,
+bin3,bin,3,20,,,rep1,
+bin4,bin,4,15,,,rep1,
+bin5,bin,5,10,,,rep1,
+bin6,bin,6,5,,,rep1,HIGHEST mCherry MFI gate within mCherry+GFP- population
