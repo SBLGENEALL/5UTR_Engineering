@@ -62,3 +62,21 @@ python 01_pipeline/scripts/run_00_full_final_pipeline.py
 ```
 
 See `docs/` for runbook, script catalog, input manifest, and interpretation guide.
+
+## Optional Step 12: retrain with experimental FACS/SortSeq labels
+
+After the 2,000-UTR pooled SortSeq experiment has produced
+`results/sortseq/utr_results_full.tsv`, run the separate follow-up stage:
+
+```bash
+FACS_N_JOBS=64 bash RUN_FACS_RETRAINING.sh \
+  /data/user/MCET03/03_NGS/02_5UTR_sorting/results/sortseq/utr_results_full.tsv
+```
+
+This stage joins by the normalized UTR sequence, reports the realized `library_group`
+distribution and category-specific Top15 enrichment, compares every available original
+prediction score with `high15_probability` and `expected_bin_score`, and evaluates
+sequence-only/prior-only/hybrid models using gene- and sequence-cluster-disjoint
+out-of-fold predictions. It does not run automatically with `RUN_FINAL_MAIN.sh`.
+See [FACS retraining runbook](docs/FACS_RETRAINING_RUNBOOK.md).
+
