@@ -62,7 +62,6 @@ for(f in feature_names){
  for(j in seq_along(m)){
    segments(j-.275,m[j],j+.275,m[j],col="white",lwd=5)
    segments(j-.275,m[j],j+.275,m[j],col="#14213D",lwd=2.5)
-   points(j,m[j],pch=21,bg="white",col="#14213D",cex=1.0,lwd=1.6)
  }
  mtext(paste(sprintf("%s median: %.3g",group_names,m),collapse="   |   "),side=1,line=4.2,cex=.72)
 }
