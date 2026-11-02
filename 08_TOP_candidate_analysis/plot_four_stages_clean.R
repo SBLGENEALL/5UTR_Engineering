@@ -55,7 +55,7 @@ for(f in feature_names){
  set.seed(101)
  for(j in seq_along(vals)){
    v<-vals[[j]];if(length(v)>150)v<-sample(v,150)
-   points(j+runif(length(v),-.16,.16),v,pch=16,cex=.32,col=adjustcolor(group_col[j],alpha.f=.30))
+   points(j+runif(length(v),-.16,.16),v,pch=16,cex=.55,col=adjustcolor(group_col[j],alpha.f=.78))
  }
  m<-vapply(vals,median,numeric(1))
  mtext(paste(sprintf("%s median: %.3g",group_names,m),collapse="   |   "),side=1,line=4.2,cex=.72)
