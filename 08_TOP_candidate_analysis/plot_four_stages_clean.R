@@ -58,6 +58,12 @@ for(f in feature_names){
    points(j+runif(length(v),-.16,.16),v,pch=16,cex=.55,col=adjustcolor(group_col[j],alpha.f=.78))
  }
  m<-vapply(vals,median,numeric(1))
+ # Draw the median LAST so it remains visible above jittered points.
+ for(j in seq_along(m)){
+   segments(j-.275,m[j],j+.275,m[j],col="white",lwd=5)
+   segments(j-.275,m[j],j+.275,m[j],col="#14213D",lwd=2.5)
+   points(j,m[j],pch=21,bg="white",col="#14213D",cex=1.0,lwd=1.6)
+ }
  mtext(paste(sprintf("%s median: %.3g",group_names,m),collapse="   |   "),side=1,line=4.2,cex=.72)
 }
 # Rank map
