@@ -37,7 +37,7 @@ image(x=seq_len(ncol(z)),y=seq_len(nrow(z)),z=t(z),col=grDevices::hcl.colors(100
 axis(1,at=seq_len(ncol(z)),labels=group_names,las=2)
 axis(2,at=seq_len(nrow(z)),labels=rownames(z),las=2,cex.axis=.75)
 for(i in seq_len(nrow(z)))for(j in seq_len(ncol(z))){
- v<-z[i,j]; if(!is.finite(v)) v<-0; mx<-suppressWarnings(max(z[is.finite(z)],na.rm=TRUE)); if(!is.finite(mx)) mx<-0; text(j,i,sprintf("%.1f%%",v),cex=.65,col="#14213D",font=2)
+ v<-z[i,j]; if(!is.finite(v)) v<-0; mx<-suppressWarnings(max(z[is.finite(z)],na.rm=TRUE)); if(!is.finite(mx)) mx<-0; cell_col<-grDevices::hcl.colors(100,"YlGnBu")[max(1L,min(100L,as.integer(round(1+99*(v-min(z,na.rm=TRUE))/max(1e-9,diff(range(z,na.rm=TRUE)))))))] ; rgb<-grDevices::col2rgb(cell_col)/255; luminance<-sum(c(.2126,.7152,.0722)*ifelse(rgb<=.04045,rgb/12.92,((rgb+.055)/1.055)^2.4)); text(j,i,sprintf("%.1f%%",v),cex=.65,col=if(luminance<.25)"#FFFFFF" else "#14213D",font=2)
 }
 # Features: consistent four-stage colors; label medians, no claims of significance
 feature_names<-setdiff(names(d),c("id","sortseq_rank","stage","analysis_category"))
