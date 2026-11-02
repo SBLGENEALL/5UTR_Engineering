@@ -15,7 +15,7 @@ pdf(out,width=12,height=7.5,onefile=TRUE,pointsize=11)
 op<-par(no.readonly=TRUE)
 # Page 1: horizontal category composition with external legend
 cats<-sort(unique(d$analysis_category[!is.na(d$analysis_category)]))
-tab<-sapply(groups,function(g){t<-table(factor(d$analysis_category[g],levels=cats));100*as.numeric(t)/sum(t)})
+tab<-sapply(groups,function(g){t<-table(factor(d$analysis_category[g],levels=cats));if(sum(t)>0) 100*as.numeric(t)/sum(t) else rep(0,length(t))})
 rownames(tab)<-cats
 # stable category palette, color-blind-friendly qualitative, many distinct hues
 catcols<-grDevices::hcl.colors(length(cats),"Dynamic")
@@ -37,7 +37,7 @@ image(x=seq_len(ncol(z)),y=seq_len(nrow(z)),z=t(z),col=grDevices::hcl.colors(100
 axis(1,at=seq_len(ncol(z)),labels=group_names,las=2)
 axis(2,at=seq_len(nrow(z)),labels=rownames(z),las=2,cex.axis=.75)
 for(i in seq_len(nrow(z)))for(j in seq_len(ncol(z))){
- v<-z[i,j];text(j,i,sprintf("%.1f%%",v),cex=.65,col=if(v>max(z,na.rm=TRUE)*.60)"white":"black")
+ v<-z[i,j]; if(!is.finite(v)) v<-0; mx<-suppressWarnings(max(z[is.finite(z)],na.rm=TRUE)); if(!is.finite(mx)) mx<-0; text(j,i,sprintf("%.1f%%",v),cex=.65,col=if(isTRUE(v>mx*.60))"white" else "black")
 }
 # Features: consistent four-stage colors; label medians, no claims of significance
 feature_names<-setdiff(names(d),c("id","sortseq_rank","stage","analysis_category"))
