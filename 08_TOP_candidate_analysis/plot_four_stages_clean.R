@@ -7,7 +7,7 @@ datafile<-file.path(indir,"candidate_groups_and_features.csv")
 if(!file.exists(datafile))stop("Missing ",datafile,"; run analyze_four_stages.R first")
 d<-read.csv(datafile,check.names=FALSE,stringsAsFactors=FALSE)
 group_names<-c("Library 2000","Top 200","Tested 60","Hits 14")
-group_col<-c("#607D9C","#41A6B5","#E4A44B","#D45B68")
+group_col<-c("#24345C","#1428A0","#0689D8","#00AFC1")
 groups<-list(rep(TRUE,nrow(d)),!is.na(d$sortseq_rank),!is.na(d$sortseq_rank)&d$sortseq_rank<=60,d$stage=="Hit 14")
 stopifnot(identical(as.integer(vapply(groups,sum,integer(1))),c(2000L,200L,60L,14L)))
 out<-file.path(indir,"four_stage_figures_clean.pdf")
@@ -18,7 +18,7 @@ cats<-sort(unique(d$analysis_category[!is.na(d$analysis_category)]))
 tab<-sapply(groups,function(g){t<-table(factor(d$analysis_category[g],levels=cats));if(sum(t)>0) 100*as.numeric(t)/sum(t) else rep(0,length(t))})
 rownames(tab)<-cats
 # stable category palette, color-blind-friendly qualitative, many distinct hues
-catcols<-grDevices::hcl.colors(length(cats),"Dynamic")
+catcols<-grDevices::colorRampPalette(c("#24345C","#1428A0","#315FC3","#0689D8","#00AFC1","#50C8D1","#8DA8D8","#7387B2","#4C6B94","#1B819B","#8AC8E8","#B7C8DF"))(length(cats))
 layout(matrix(c(1,2),1,2),widths=c(3.7,1.25))
 par(mar=c(5,10,5,1),xpd=FALSE)
 barplot(tab,horiz=TRUE,beside=FALSE,col=catcols,border="white",space=.5,
