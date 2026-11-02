@@ -37,7 +37,7 @@ image(x=seq_len(ncol(z)),y=seq_len(nrow(z)),z=t(z),col=grDevices::hcl.colors(100
 axis(1,at=seq_len(ncol(z)),labels=group_names,las=2)
 axis(2,at=seq_len(nrow(z)),labels=rownames(z),las=2,cex.axis=.75)
 for(i in seq_len(nrow(z)))for(j in seq_len(ncol(z))){
- v<-z[i,j]; if(!is.finite(v)) v<-0; mx<-suppressWarnings(max(z[is.finite(z)],na.rm=TRUE)); if(!is.finite(mx)) mx<-0; text(j,i,sprintf("%.1f%%",v),cex=.65,col=if(isTRUE(v>mx*.60))"white" else "black")
+ v<-z[i,j]; if(!is.finite(v)) v<-0; mx<-suppressWarnings(max(z[is.finite(z)],na.rm=TRUE)); if(!is.finite(mx)) mx<-0; text(j,i,sprintf("%.1f%%",v),cex=.65,col="#14213D",font=2)
 }
 # Features: consistent four-stage colors; label medians, no claims of significance
 feature_names<-setdiff(names(d),c("id","sortseq_rank","stage","analysis_category"))
@@ -69,7 +69,7 @@ for(f in feature_names){
 par(mar=c(6,5,5,2))
 r<-d$sortseq_rank
 plot(1,1,type="n",xlim=c(1,200),ylim=c(.3,2.2),yaxt="n",xlab="Sort-seq Rank (lower is better)",ylab="",main="Validated hits within the Top 200")
-rect(1,.3,60,2.2,col=adjustcolor(group_col[3],alpha.f=.10),border=NA)
+rect(1,.3,61,2.2,col=adjustcolor(group_col[3],alpha.f=.10),border=NA)
 abline(v=61,lty=2,col="grey55")
 points(r[!is.na(r)&r<=61&d$stage!="Hit 14"],rep(1,sum(!is.na(r)&r<=61&d$stage!="Hit 14")),pch=16,col=group_col[3],cex=.9)
 points(r[d$stage=="Hit 14"],rep(1.5,sum(d$stage=="Hit 14")),pch=19,col=group_col[4],cex=1.4)
