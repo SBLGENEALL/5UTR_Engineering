@@ -23,10 +23,10 @@ if(anyDuplicated(top$id)) stop("Duplicate UTR IDs in top200")
 if(length(setdiff(top$id,lib$id))) stop("Top200 IDs absent from library: ",paste(setdiff(top$id,lib$id),collapse=", "))
 hits<-unique(normalize(readLines(hitfile,warn=FALSE)));hits<-hits[nzchar(hits)&!grepl("^#",hits)]
 if(length(hits)!=14) stop("Expected 14 hit IDs; got ",length(hits))
-tested<-top$id[top$sortseq_rank<=60]
-if(length(setdiff(hits,tested))) stop("Hit IDs outside tested rank 1..60: ",paste(setdiff(hits,tested),collapse=", "))
+tested<-top$id[top$sortseq_rank<=61]
+if(length(setdiff(hits,tested))) stop("Hit IDs outside tested rank 1..61: ",paste(setdiff(hits,tested),collapse=", "))
 lib$sortseq_rank<-top$sortseq_rank[match(lib$id,top$id)]
-lib$stage<-ifelse(lib$id%in%hits,"Hit 14",ifelse(lib$id%in%tested,"Tested non-hit 46",ifelse(!is.na(lib$sortseq_rank),"Top200 untested 140","Other library 1800")))
+lib$stage<-ifelse(lib$id%in%hits,"Hit 14",ifelse(lib$id%in%tested,"Tested non-hit 47",ifelse(!is.na(lib$sortseq_rank),"Top200 untested 139","Other library 1800")))
 lib$in_top200<-!is.na(lib$sortseq_rank)
 lib$in_tested<-lib$id%in%tested
 lib$is_hit<-lib$id%in%hits
@@ -46,12 +46,12 @@ if("sequence_GC_percent"%in%features) features<-setdiff(features,c("gc_content",
 if("sequence_length"%in%features) features<-setdiff(features,"length")
 if("sequence_uAUG"%in%features) features<-setdiff(features,"uaug_count")
 write.csv(lib[,unique(c("id","sortseq_rank","stage","analysis_category",features))],file.path(out,"candidate_groups_and_features.csv"),row.names=FALSE)
-groups<-list(Library_2000=rep(TRUE,nrow(lib)),Top_200=lib$in_top200,Tested_60=lib$in_tested,Hit_14=lib$is_hit)
+groups<-list(Library_2000=rep(TRUE,nrow(lib)),Top_200=lib$in_top200,Tested_61=lib$in_tested,Hit_14=lib$is_hit)
 counts<-do.call(rbind,lapply(names(groups),function(g) data.frame(group=g,n=sum(groups[[g]]))))
 write.csv(counts,file.path(out,"group_counts.csv"),row.names=FALSE)
 cat_table<-do.call(rbind,lapply(names(groups),function(g){t<-table(lib$analysis_category[groups[[g]]]);data.frame(group=g,category=names(t),n=as.integer(t),percent=100*as.numeric(t)/sum(t))}))
 write.csv(cat_table,file.path(out,"category_composition.csv"),row.names=FALSE)
-comparisons<-list(Top200_vs_remaining1800=list(a=lib$in_top200,b=!lib$in_top200),Hits14_vs_tested_nonhits46=list(a=lib$is_hit,b=lib$in_tested&!lib$is_hit),Hits14_vs_other_top200_186=list(a=lib$is_hit,b=lib$in_top200&!lib$is_hit))
+comparisons<-list(Top200_vs_remaining1800=list(a=lib$in_top200,b=!lib$in_top200),Hits14_vs_tested_nonhits47=list(a=lib$is_hit,b=lib$in_tested&!lib$is_hit),Hits14_vs_other_top200_186=list(a=lib$is_hit,b=lib$in_top200&!lib$is_hit))
 results<-list()
 for(nm in names(comparisons)) for(f in features){
  x<-suppressWarnings(as.numeric(lib[[f]]));a<-x[comparisons[[nm]]$a];b<-x[comparisons[[nm]]$b];a<-a[is.finite(a)];b<-b[is.finite(b)]
@@ -80,15 +80,15 @@ for(f in features){
  x<-suppressWarnings(as.numeric(lib[[f]]));if(sum(is.finite(x))<10)next
  vals<-lapply(groups,function(ix)x[ix&is.finite(x)])
  par(mar=c(6,5,4,2))
- boxplot(vals,names=c("Library 2000","Top 200","Tested 60","Hits 14"),col=c("grey85","#a6cee3","#b2df8a","#fdbf6f"),main=f,ylab=f,outline=FALSE)
+ boxplot(vals,names=c("Library 2000","Top 200","Tested 61","Hits 14"),col=c("grey85","#a6cee3","#b2df8a","#fdbf6f"),main=f,ylab=f,outline=FALSE)
  stripchart(vals,vertical=TRUE,method="jitter",add=TRUE,pch=16,cex=.35,col=adjustcolor("black",alpha.f=.20))
 }
 par(mar=c(5,5,4,2))
 plot(top$sortseq_rank,rep(0,nrow(top)),type="n",xlim=c(1,200),ylim=c(0,2),yaxt="n",xlab="Sort-seq Rank (1 = highest)",ylab="",main="Top 200 ranking and validated hits")
-abline(v=60,lty=2,col="grey50")
+abline(v=61,lty=2,col="grey50")
 points(lib$sortseq_rank[lib$in_tested&!lib$is_hit],rep(1,sum(lib$in_tested&!lib$is_hit)),pch=16,col="#6baed6")
 points(lib$sortseq_rank[lib$is_hit],rep(1.4,sum(lib$is_hit)),pch=19,col="#e6550d",cex=1.2)
-legend("topright",legend=c("Tested non-hit (46)","Validated hit (14)","Test cutoff Rank 60"),col=c("#6baed6","#e6550d","grey50"),pch=c(16,19,NA),lty=c(NA,NA,2),bty="n")
+legend("topright",legend=c("Tested non-hit (46)","Validated hit (14)","Test cutoff Rank 61"),col=c("#6baed6","#e6550d","grey50"),pch=c(16,19,NA),lty=c(NA,NA,2),bty="n")
 dev.off()
-writeLines(c("Four-stage 5UTR analysis completed.",paste("Top200:",sum(lib$in_top200),"Tested:",sum(lib$in_tested),"Hits:",sum(lib$is_hit)),paste("Features tested:",length(features)),paste("Significant feature tests after Holm:",if(nrow(stats))sum(stats$p_holm<0.05,na.rm=TRUE) else 0),paste("Significant category tests after Holm:",sum(ct$p_holm<0.05,na.rm=TRUE)),"Top200 vs remaining 1800 and hits vs tested nonhits are primary comparisons.","Hits vs other Top200 is descriptive/exploratory: 140 are untested.","No non-significant comparison is interpreted as equivalence.","Top200 was preselected by Sort-seq; results are associative, not causal."),file.path(out,"summary.txt"))
+writeLines(c("Four-stage 5UTR analysis completed.",paste("Top200:",sum(lib$in_top200),"Tested:",sum(lib$in_tested),"Hits:",sum(lib$is_hit)),paste("Features tested:",length(features)),paste("Significant feature tests after Holm:",if(nrow(stats))sum(stats$p_holm<0.05,na.rm=TRUE) else 0),paste("Significant category tests after Holm:",sum(ct$p_holm<0.05,na.rm=TRUE)),"Top200 vs remaining 1800 and hits vs tested nonhits are primary comparisons.","Hits vs other Top200 is descriptive/exploratory: 139 are untested.","No non-significant comparison is interpreted as equivalence.","Top200 was preselected by Sort-seq; results are associative, not causal."),file.path(out,"summary.txt"))
 cat("Completed:",normalizePath(out),"\n")
